@@ -19,7 +19,8 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  X
+  X,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
@@ -52,12 +53,12 @@ interface Examiner {
   assignedExams: number;
 }
 
-interface ExamSubmission {
+interface ExamSubmissionItem {
   id: string;
   candidateName: string;
   candidateEmail: string;
   submittedAt: string;
-  status: 'pending' | 'assigned' | 'corrected';
+  status: 'draft' | 'submitted' | 'under_review' | 'graded';
   assignedTo?: string;
   score?: number;
 }
@@ -77,6 +78,72 @@ interface Certificate {
   score: number;
   issuedAt: string;
   downloadUrl: string;
+}
+
+type QuestionType = 'qcm' | 'free_text';
+
+type CertificationType = 
+  | 'initiation_pratique_generale'
+  | 'cadre_manager_professionnel'
+  | 'rentabilite_entrepreneuriale'
+  | 'chef_dirigeant_entreprise_africaine'
+  | 'investisseur_entreprises_africaines'
+  | 'ingenieries_specifiques';
+
+type ModuleType = 'leadership' | 'competences_professionnelles' | 'entrepreneuriat';
+
+interface AnswerOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+interface ExamQuestion {
+  id: string;
+  certificationType: CertificationType;
+  module: ModuleType;
+  questionType: QuestionType;
+  questionText: string;
+  referenceAnswer: string;
+  instructions: string;
+  points: number;
+  timeLimit: number; // en secondes
+  isRequired: boolean;
+  answerOptions?: AnswerOption[];
+  createdAt: string;
+  updatedAt: string;
+  isPublished?: boolean;
+  publishedAt?: string;
+}
+
+interface ExamSubmissionData {
+  id: string;
+  examId: string;
+  candidateId: string;
+  candidateName: string;
+  answers: {
+    questionId: string;
+    answer: string | string[];
+    submittedAt: string;
+    score?: number;
+    feedback?: string;
+  }[];
+  status: 'draft' | 'submitted' | 'under_review' | 'graded';
+  startedAt: string;
+  submittedAt?: string;
+  gradedAt?: string;
+  totalScore?: number;
+  examinerId?: string;
+}
+
+interface ExamAssignment {
+  id: string;
+  examId: string;
+  examinerId: string;
+  assignedAt: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  completedAt?: string;
+  submissionId?: string;
 }
 
 export const AdminDashboard: React.FC = () => {
@@ -153,21 +220,72 @@ export const AdminDashboard: React.FC = () => {
     }
   ]);
 
-  const [examSubmissions, setExamSubmissions] = useState<ExamSubmission[]>([
+  // Exam submissions state - initialized only once
+  const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>(() => [
     {
       id: '1',
+      examId: 'exam-initiation_pratique_generale-leadership',
+      candidateId: '1',
       candidateName: 'Marie Dubois',
-      candidateEmail: 'marie.dubois@email.com',
-      submittedAt: '2024-01-15T14:30:00Z',
-      status: 'pending'
+      answers: [],
+      status: 'submitted',
+      startedAt: '2024-01-15T14:30:00Z',
+      submittedAt: '2024-01-15T15:30:00Z',
+      totalScore: 0
     },
     {
       id: '2',
+      examId: 'exam-initiation_pratique_generale-leadership',
+      candidateId: '2',
       candidateName: 'Paul Nkomo',
-      candidateEmail: 'paul.nkomo@email.com',
-      submittedAt: '2024-01-14T10:15:00Z',
-      status: 'assigned',
-      assignedTo: 'Dr. Jean Kamga'
+      answers: [],
+      status: 'under_review',
+      startedAt: '2024-01-16T10:15:00Z',
+      submittedAt: '2024-01-16T11:30:00Z',
+      totalScore: 0,
+      examinerId: '1'
+    },
+    {
+      id: '3',
+      examId: 'exam-initiation_pratique_generale-leadership',
+      candidateId: '3',
+      candidateName: 'Sophie Martin',
+      answers: [
+        {
+          questionId: '1',
+          answer: 'Réponse à la question 1',
+          submittedAt: '2024-01-17T14:20:00Z',
+          score: 15,
+          feedback: 'Bonne réponse, mais pourrait être plus détaillée.'
+        }
+      ],
+      status: 'graded',
+      startedAt: '2024-01-17T13:00:00Z',
+      submittedAt: '2024-01-17T14:20:00Z',
+      gradedAt: '2024-01-17T16:45:00Z',
+      totalScore: 15,
+      examinerId: '1'
+    }
+  ]);
+
+  // Exam assignments state - tracks examiner assignments to submissions
+  const [examAssignmentsState, setExamAssignmentsState] = useState<ExamAssignment[]>([
+    {
+      id: '1',
+      examId: 'exam-initiation_pratique_generale-leadership',
+      examinerId: '1',
+      assignedAt: '2024-01-10T09:00:00Z',
+      status: 'completed',
+      completedAt: '2024-01-12T15:30:00Z',
+      submissionId: '3' // Matches the graded submission
+    },
+    {
+      id: '2',
+      examId: 'exam-initiation_pratique_generale-leadership',
+      examinerId: '2',
+      assignedAt: '2024-01-11T10:00:00Z',
+      status: 'in_progress',
+      submissionId: '2' // Matches the under_review submission
     }
   ]);
 
@@ -190,7 +308,193 @@ export const AdminDashboard: React.FC = () => {
     }
   ]);
 
-  const [certificates] = useState<Certificate[]>([
+  // État pour la gestion des questions d'examen
+  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<Partial<ExamQuestion>>({
+    questionType: 'qcm',
+    isRequired: true,
+    points: 1,
+    timeLimit: 60,
+    answerOptions: [
+      { id: '1', text: '', isCorrect: false },
+      { id: '2', text: '', isCorrect: false }
+    ]
+  });
+  const [selectedCertification, setSelectedCertification] = useState<CertificationType>('initiation_pratique_generale');
+  const [selectedModule, setSelectedModule] = useState<ModuleType>('leadership');
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [selectedExam, setSelectedExam] = useState<{
+    certificationType: CertificationType;
+    module: ModuleType;
+  } | null>(null);
+  
+  const [currentExamSubmission, setCurrentExamSubmission] = useState<ExamSubmissionData | null>(null);
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false);
+  const [showGradingModal, setShowGradingModal] = useState(false);
+  const [grades, setGrades] = useState<Record<string, { score: number; feedback: string }>>({});
+
+  // Fonction pour publier un examen
+  const publishExam = (certificationType: CertificationType, module: ModuleType) => {
+    const now = new Date().toISOString();
+    
+    // Marquer les questions comme publiées
+    const updatedQuestions = questions.map(q => ({
+      ...q,
+      isPublished: q.certificationType === certificationType && q.module === module ? true : q.isPublished,
+      publishedAt: q.certificationType === certificationType && q.module === module ? now : q.publishedAt
+    }));
+    
+    setQuestions(updatedQuestions);
+    
+    // Créer une nouvelle soumission d'examen pour chaque candidat
+    const candidates = users.filter(u => u.role === 'candidate');
+    const examQuestions = questions.filter(
+      q => q.certificationType === certificationType && q.module === module && q.isPublished
+    );
+    
+    if (examQuestions.length === 0) {
+      alert('Aucune question n\'est disponible pour cet examen.');
+      return;
+    }
+    
+    const newSubmissions: ExamSubmissionData[] = candidates.map(candidate => ({
+      id: `sub-${Date.now()}-${candidate.id}`,
+      examId: `exam-${certificationType}-${module}`,
+      candidateId: candidate.id,
+      candidateName: `${candidate.firstName} ${candidate.lastName}`,
+      answers: examQuestions.map(q => ({
+        questionId: q.id,
+        answer: '',
+        submittedAt: '',
+        score: 0
+      })),
+      status: 'draft',
+      startedAt: now,
+      totalScore: 0
+    }));
+    
+    setExamSubmissionsState(prev => [...prev, ...newSubmissions]);
+    
+    // Assigner les examens aux examinateurs
+    const activeExaminers = examiners.filter(e => e.isActive);
+    if (activeExaminers.length === 0) {
+      alert('Aucun examinateur actif disponible pour la correction.');
+      return;
+    }
+    
+    const newAssignments = newSubmissions.map((submission, index) => ({
+      id: `assign-${Date.now()}-${index}`,
+      examId: submission.examId,
+      submissionId: submission.id,
+      examinerId: activeExaminers[index % activeExaminers.length].id,
+      assignedAt: now,
+      status: 'pending' as const,
+      completedAt: undefined
+    }));
+    
+    setExamAssignmentsState(prev => [...prev, ...newAssignments]);
+    
+    // Mettre à jour le compteur d'examens assignés pour les examinateurs
+    const updatedExaminers = examiners.map((examiner, index) => ({
+      ...examiner,
+      assignedExams: examiner.assignedExams + 
+        newAssignments.filter(a => a.examinerId === examiner.id).length
+    }));
+    
+    setExaminers(updatedExaminers);
+    
+    alert(`Examen publié avec succès pour ${candidates.length} candidats.`);
+  };
+  
+  // Fonction pour récupérer les soumissions d'un examinateur
+  const getExaminerSubmissions = (examinerId: string) => {
+    return examSubmissionsState
+      .filter((submission: ExamSubmissionData) => 
+        submission.examinerId === examinerId && 
+        (submission.status === 'under_review' || submission.status === 'graded')
+      )
+      .map((submission: ExamSubmissionData) => {
+        const candidate = users.find((u: User) => u.id === submission.candidateId);
+        const examQuestions = questions.filter(
+          (q: ExamQuestion) => q.certificationType === selectedExam?.certificationType && 
+                             q.module === selectedExam?.module
+        );
+        const assignment = examAssignmentsState.find((a: ExamAssignment) => a.submissionId === submission.id);
+        
+        return {
+          ...submission,
+          candidate,
+          questions: examQuestions,
+          assignmentId: assignment?.id
+        };
+      });
+  };
+  
+  // Fonction pour soumettre une correction
+  const submitGrading = (submissionId: string, grades: Record<string, { score: number; feedback: string }>) => {
+    const now = new Date().toISOString();
+    
+    // Update submission with grades
+    setExamSubmissionsState((prev: ExamSubmissionData[]) => 
+      prev.map((submission: ExamSubmissionData) => {
+        if (submission.id === submissionId) {
+          // Update examiner's assigned exams count if this submission has an examiner
+          if (submission.examinerId) {
+            setExaminers(prev =>
+              prev.map(e =>
+                e.id === submission.examinerId && e.assignedExams > 0
+                  ? { ...e, assignedExams: e.assignedExams - 1 }
+                  : e
+              )
+            );
+          }
+          
+          // Calculate total score from grades
+          const totalScore = Object.values(grades).reduce((sum, { score }) => sum + score, 0);
+          
+          // Generate certificate if score is sufficient (70% or higher)
+          if (totalScore >= 70) {
+            const candidate = users.find(u => u.id === submission.candidateId);
+            if (candidate) {
+              const newCertificate: Certificate = {
+                id: `cert-${Date.now()}`,
+                candidateName: `${candidate.firstName} ${candidate.lastName}`,
+                certificationType: selectedExam?.certificationType || 'initiation_pratique_generale',
+                module: selectedExam?.module || 'leadership',
+                score: totalScore,
+                issuedAt: now,
+                downloadUrl: `/certificates/${candidate.id}-${Date.now()}.pdf`
+              };
+              setCertificates(prev => [...prev, newCertificate]);
+            }
+          }
+          
+          // Return updated submission with proper typing
+          const updatedSubmission: ExamSubmissionData = {
+            ...submission,
+            status: 'graded',
+            gradedAt: now,
+            totalScore,
+            answers: submission.answers.map(answer => {
+              const grade = grades[answer.questionId];
+              return {
+                ...answer,
+                score: grade?.score,
+                feedback: grade?.feedback || ''
+              };
+            })
+          };
+          
+          return updatedSubmission;
+        }
+        return submission;
+      })
+    );
+    
+    alert('Correction soumise avec succès.');
+  };
+
+  const [certificates, setCertificates] = useState<Certificate[]>([
     {
       id: '1',
       candidateName: 'Marie Dubois',
@@ -217,6 +521,7 @@ export const AdminDashboard: React.FC = () => {
     firstName: '',
     lastName: '',
     email: '',
+    password: '',
     phone: '',
     specialization: '',
     experience: ''
@@ -224,13 +529,13 @@ export const AdminDashboard: React.FC = () => {
 
   const stats = {
     totalUsers: users.length,
-    activeUsers: users.filter(u => u.isActive).length,
+    activeUsers: users.filter((u: User) => u.isActive).length,
     totalExaminers: examiners.length,
-    activeExaminers: examiners.filter(e => e.isActive).length,
-    pendingExams: examSubmissions.filter(e => e.status === 'pending').length,
-    completedExams: examSubmissions.filter(e => e.status === 'corrected').length,
-    totalPayments: payments.reduce((sum, p) => sum + p.amount, 0),
-    completedPayments: payments.filter(p => p.status === 'completed').length,
+    activeExaminers: examiners.filter((e: Examiner) => e.isActive).length,
+    pendingExams: examSubmissionsState.filter((e: ExamSubmissionData) => e.status === 'submitted').length,
+    completedExams: examSubmissionsState.filter((e: ExamSubmissionData) => e.status === 'graded').length,
+    totalPayments: payments.reduce((sum: number, p: Payment) => sum + p.amount, 0),
+    completedPayments: payments.filter((p: Payment) => p.status === 'completed').length,
     totalCertificates: certificates.length
   };
 
@@ -324,13 +629,15 @@ export const AdminDashboard: React.FC = () => {
         email: examiner.email,
         phone: examiner.phone,
         specialization: examiner.specialization,
-        experience: examiner.experience
+        experience: examiner.experience,
+        password: '' // Ne pas afficher le mot de passe existant pour des raisons de sécurité
       });
     } else {
       setExaminerForm({
         firstName: '',
         lastName: '',
         email: '',
+        password: '',
         phone: '',
         specialization: '',
         experience: ''
@@ -374,24 +681,68 @@ export const AdminDashboard: React.FC = () => {
 
   const sendEmailToExaminer = (examiner: Examiner) => {
     console.log('Email envoyé à:', examiner.email);
-    alert(`Email envoyé à ${examiner.firstName} ${examiner.lastName}`);
   };
 
-  // Exam Functions
+  // Fonction pour assigner un examinateur à une soumission
   const assignExaminer = (submissionId: string, examinerId: string) => {
-    const examiner = examiners.find(e => e.id === examinerId);
-    const updatedSubmissions = examSubmissions.map(s => 
-      s.id === submissionId ? { 
-        ...s, 
-        status: 'assigned' as const, 
-        assignedTo: examiner ? `${examiner.firstName} ${examiner.lastName}` : undefined 
-      } : s
+    const submission = examSubmissionsState.find(s => s.id === submissionId);
+    if (!submission) return;
+    
+    // Vérification que l'examId est défini
+    if (!submission.examId) {
+      console.error('Impossible d\'assigner un examinateur : examId est indéfini pour la soumission', submissionId);
+      return;
+    }
+
+    // Mettre à jour l'état des soumissions pour refléter l'assignation
+    setExamSubmissionsState(prev => 
+      prev.map(s => 
+        s.id === submissionId 
+          ? { ...s, examinerId, status: 'under_review' as const }
+          : s
+      )
     );
-    setExamSubmissions(updatedSubmissions);
-    console.log('Examen assigné:', { submissionId, examinerId });
+
+    // Mettre à jour ou créer l'assignation d'examen
+    setExamAssignmentsState(prev => {
+      const existingAssignment = prev.find(a => a.submissionId === submissionId);
+      
+      if (existingAssignment) {
+        return prev.map(assignment => 
+          assignment.id === existingAssignment.id
+            ? { 
+                ...assignment, 
+                examinerId,
+                status: 'in_progress' as const,
+                assignedAt: new Date().toISOString()
+              }
+            : assignment
+        );
+      } else {
+        const newAssignment: ExamAssignment = {
+          id: `assign-${Date.now()}`,
+          examId: submission.examId, // Maintenant garanti d'être défini grâce à la vérification plus haut
+          examinerId,
+          assignedAt: new Date().toISOString(),
+          status: 'in_progress',
+          submissionId
+        };
+        return [...prev, newAssignment];
+      }
+    });
+
+    // Mettre à jour le compteur d'examens assignés de l'examinateur
+    setExaminers(prev => 
+      prev.map(e => 
+        e.id === examinerId 
+          ? { ...e, assignedExams: (e.assignedExams || 0) + 1 }
+          : e
+      )
+    );
+    
+    alert('Examinateur assigné avec succès.');
   };
 
-  // Certificate Functions
   const downloadCertificate = (certificate: Certificate) => {
     console.log('Téléchargement du certificat:', certificate.downloadUrl);
     alert(`Téléchargement du certificat de ${certificate.candidateName}`);
@@ -400,6 +751,99 @@ export const AdminDashboard: React.FC = () => {
   const sendCertificateByEmail = (certificate: Certificate) => {
     console.log('Certificat envoyé par email:', certificate.candidateName);
     alert(`Certificat envoyé par email à ${certificate.candidateName}`);
+  };
+
+  // Fonctions pour la gestion des questions d'examen
+  const handleQuestionChange = (field: keyof ExamQuestion, value: any) => {
+    setCurrentQuestion(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleAnswerOptionChange = (id: string, field: keyof AnswerOption, value: any) => {
+    setCurrentQuestion(prev => ({
+      ...prev,
+      answerOptions: prev.answerOptions?.map(option => 
+        option.id === id ? { ...option, [field]: value } : option
+      )
+    }));
+  };
+
+  const addAnswerOption = () => {
+    setCurrentQuestion(prev => ({
+      ...prev,
+      answerOptions: [
+        ...(prev.answerOptions || []),
+        { id: Date.now().toString(), text: '', isCorrect: false }
+      ]
+    }));
+  };
+
+  const removeAnswerOption = (id: string) => {
+    setCurrentQuestion(prev => ({
+      ...prev,
+      answerOptions: prev.answerOptions?.filter(option => option.id !== id)
+    }));
+  };
+
+  const saveQuestion = () => {
+    if (!currentQuestion.questionText || !currentQuestion.referenceAnswer) {
+      alert('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const newQuestion: ExamQuestion = {
+      id: Date.now().toString(),
+      certificationType: selectedCertification,
+      module: selectedModule,
+      questionType: currentQuestion.questionType || 'qcm',
+      questionText: currentQuestion.questionText || '',
+      referenceAnswer: currentQuestion.referenceAnswer || '',
+      instructions: currentQuestion.instructions || '',
+      points: currentQuestion.points || 1,
+      timeLimit: currentQuestion.timeLimit || 60,
+      isRequired: currentQuestion.isRequired !== false,
+      answerOptions: currentQuestion.questionType === 'qcm' ? currentQuestion.answerOptions : undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    setQuestions(prev => [...prev, newQuestion]);
+    
+    // Réinitialiser le formulaire
+    setCurrentQuestion({
+      questionType: 'qcm',
+      isRequired: true,
+      points: 1,
+      timeLimit: 60,
+      answerOptions: [
+        { id: '1', text: '', isCorrect: false },
+        { id: '2', text: '', isCorrect: false }
+      ]
+    });
+  };
+
+  const deleteQuestion = (id: string) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette question ?')) {
+      setQuestions(prev => prev.filter(q => q.id !== id));
+    }
+  };
+
+  const certificationLabels: Record<CertificationType, string> = {
+    initiation_pratique_generale: 'Certification d\'Initiation Pratique Générale',
+    cadre_manager_professionnel: 'Certification Cadre, Manager et Professionnel d\'entreprise',
+    rentabilite_entrepreneuriale: 'Certification en Rentabilité Entrepreneuriale',
+    chef_dirigeant_entreprise_africaine: 'Certification Chef ou Dirigeant d\'Entreprise Locale Africaine',
+    investisseur_entreprises_africaines: 'Certification Investisseur en Entreprises Africaines',
+    ingenieries_specifiques: 'Certifications en Ingénieries Spécifiques'
+  };
+
+  const moduleLabels: Record<ModuleType, string> = {
+    leadership: 'Module Leadership',
+    competences_professionnelles: 'Module Compétences Professionnelles',
+    entrepreneuriat: 'Module Entrepreneuriat'
   };
 
   const formatDate = (dateString: string) => {
@@ -428,7 +872,8 @@ export const AdminDashboard: React.FC = () => {
     { id: 'payments', label: 'Paiements', icon: CreditCard },
     { id: 'certificates', label: 'Certificats', icon: Award },
     { id: 'analytics', label: 'Analytiques', icon: TrendingUp },
-    { id: 'settings', label: 'Paramètres', icon: Settings }
+    { id: 'settings', label: 'Paramètres', icon: Settings },
+    { id: 'exam-questions', label: 'Questions d\'examen', icon: HelpCircle }
   ];
 
   return (
@@ -778,6 +1223,284 @@ export const AdminDashboard: React.FC = () => {
             </div>
           )}
 
+          {activeSection === 'exam-questions' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Gestion des questions d'examen</h2>
+                <Button
+                  onClick={() => setShowPublishModal(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={!selectedExam || questions.filter(
+                    q => q.certificationType === selectedExam?.certificationType && 
+                         q.module === selectedExam?.module
+                  ).length === 0}
+                >
+                  Publier l'examen
+                </Button>
+              </div>
+
+              {/* Sélection de la certification et du module */}
+              <Card className="p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Contexte de la question</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Certification
+                    </label>
+                    <select
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      value={selectedCertification}
+                      onChange={(e) => setSelectedCertification(e.target.value as CertificationType)}
+                    >
+                      {Object.entries(certificationLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Module
+                    </label>
+                    <select
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      value={selectedModule}
+                      onChange={(e) => setSelectedModule(e.target.value as ModuleType)}
+                    >
+                      {Object.entries(moduleLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Formulaire de création de question */}
+              <Card className="p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Nouvelle question</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Type de question
+                    </label>
+                    <div className="flex space-x-4">
+                      <label className="inline-flex items-center">
+                        <input
+                          type="radio"
+                          className="form-radio"
+                          checked={currentQuestion.questionType === 'qcm'}
+                          onChange={() => handleQuestionChange('questionType', 'qcm')}
+                        />
+                        <span className="ml-2">QCM</span>
+                      </label>
+                      <label className="inline-flex items-center">
+                        <input
+                          type="radio"
+                          className="form-radio"
+                          checked={currentQuestion.questionType === 'free_text'}
+                          onChange={() => handleQuestionChange('questionType', 'free_text')}
+                        />
+                        <span className="ml-2">Question libre</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Question <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={3}
+                      value={currentQuestion.questionText || ''}
+                      onChange={(e) => handleQuestionChange('questionText', e.target.value)}
+                      placeholder="Écrivez votre question ici..."
+                    />
+                  </div>
+
+                  {currentQuestion.questionType === 'qcm' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Options de réponse
+                      </label>
+                      <div className="space-y-2 mb-2">
+                        {currentQuestion.answerOptions?.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={option.isCorrect}
+                              onChange={(e) => 
+                                handleAnswerOptionChange(option.id, 'isCorrect', e.target.checked)
+                              }
+                              className="form-checkbox h-5 w-5 text-blue-600"
+                            />
+                            <input
+                              type="text"
+                              className="flex-1 p-2 border border-gray-300 rounded-md"
+                              value={option.text}
+                              onChange={(e) => 
+                                handleAnswerOptionChange(option.id, 'text', e.target.value)
+                              }
+                              placeholder="Texte de l'option"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeAnswerOption(option.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addAnswerOption}
+                        className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Ajouter une option
+                      </button>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Réponse de référence <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={3}
+                      value={currentQuestion.referenceAnswer || ''}
+                      onChange={(e) => handleQuestionChange('referenceAnswer', e.target.value)}
+                      placeholder="Réponse attendue..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Instructions supplémentaires
+                    </label>
+                    <textarea
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={2}
+                      value={currentQuestion.instructions || ''}
+                      onChange={(e) => handleQuestionChange('instructions', e.target.value)}
+                      placeholder="Instructions pour l'examinateur..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Points
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        value={currentQuestion.points || 1}
+                        onChange={(e) => handleQuestionChange('points', parseInt(e.target.value) || 1)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Durée (secondes)
+                      </label>
+                      <input
+                        type="number"
+                        min="10"
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        value={currentQuestion.timeLimit || 60}
+                        onChange={(e) => handleQuestionChange('timeLimit', parseInt(e.target.value) || 60)}
+                      />
+                    </div>
+                    <div className="flex items-center">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          className="form-checkbox h-5 w-5 text-blue-600"
+                          checked={currentQuestion.isRequired !== false}
+                          onChange={(e) => handleQuestionChange('isRequired', e.target.checked)}
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Question obligatoire</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="pt-4">
+                    <Button
+                      onClick={saveQuestion}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Enregistrer la question
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Liste des questions existantes */}
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Questions existantes</h3>
+                
+                {questions.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">Aucune question n'a été créée pour le moment.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {questions.map((question) => (
+                      <div key={question.id} className="border-b border-gray-200 pb-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-medium">{question.questionText}</h4>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {certificationLabels[question.certificationType]} • {moduleLabels[question.module]}
+                              {question.questionType === 'qcm' && ` • ${question.answerOptions?.length} options`}
+                              {question.questionType === 'free_text' && ' • Réponse libre'}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {question.points} point{question.points > 1 ? 's' : ''} • {question.timeLimit} secondes • 
+                              {question.isRequired ? ' Obligatoire' : ' Facultative'}
+                            </div>
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:text-blue-800"
+                              onClick={() => {
+                                // Mettre à jour avec la question existante
+                                setCurrentQuestion({
+                                  ...question,
+                                  answerOptions: question.answerOptions?.length ? question.answerOptions : [
+                                    { id: '1', text: '', isCorrect: false },
+                                    { id: '2', text: '', isCorrect: false }
+                                  ]
+                                });
+                                // Supprimer l'ancienne version
+                                setQuestions(prev => prev.filter(q => q.id !== question.id));
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="text-red-600 hover:text-red-800"
+                              onClick={() => deleteQuestion(question.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
           {activeSection === 'exams' && (
             <div className="space-y-6">
               <h2 className="text-xl font-semibold text-gray-900">Gestion des Examens</h2>
@@ -796,52 +1519,281 @@ export const AdminDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {examSubmissions.map((submission) => (
-                        <tr key={submission.id} className="border-b border-gray-100">
-                          <td className="py-3 px-4">
-                            <div>
-                              <p className="font-medium text-gray-900">{submission.candidateName}</p>
-                              <p className="text-sm text-gray-500">{submission.candidateEmail}</p>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-gray-900">
-                            {formatDate(submission.submittedAt)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              submission.status === 'pending' ? 'bg-orange-100 text-orange-800' :
-                              submission.status === 'assigned' ? 'bg-blue-100 text-blue-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {submission.status === 'pending' ? 'En attente' :
-                               submission.status === 'assigned' ? 'Assigné' : 'Corrigé'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-gray-900">
-                            {submission.assignedTo || '-'}
-                          </td>
-                          <td className="py-3 px-4">
-                            {submission.status === 'pending' && (
-                              <select
-                                onChange={(e) => assignExaminer(submission.id, e.target.value)}
-                                className="text-sm border border-gray-300 rounded px-2 py-1"
-                                defaultValue=""
-                              >
-                                <option value="">Assigner à...</option>
-                                {examiners.filter(e => e.isActive).map((examiner) => (
-                                  <option key={examiner.id} value={examiner.id}>
-                                    {examiner.firstName} {examiner.lastName}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {examSubmissionsState.map((submission) => {
+                        const candidate = users.find(u => u.id === submission.candidateId);
+                        return (
+                          <tr key={submission.id} className="border-b border-gray-100">
+                            <td className="py-3 px-4">
+                              <div>
+                                <p className="font-medium text-gray-900">{submission.candidateName}</p>
+                                <p className="text-sm text-gray-500">
+                                  {candidate?.email || 'Email non disponible'}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-gray-900">
+                              {formatDate(submission.submittedAt)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                submission.status === 'draft' ? 'bg-gray-100 text-gray-800' :
+                                submission.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                                submission.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {submission.status === 'draft' ? 'Brouillon' :
+                                 submission.status === 'submitted' ? 'Soumis' :
+                                 submission.status === 'under_review' ? 'En correction' :
+                                 submission.status === 'graded' ? 'Corrigé' : 'Inconnu'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-gray-900">
+                              {submission.examinerId 
+                                ? examiners.find(e => e.id === submission.examinerId)?.firstName + ' ' + 
+                                  examiners.find(e => e.id === submission.examinerId)?.lastName
+                                : '-'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-2 items-center">
+                                <button 
+                                  className="text-blue-600 hover:text-blue-800"
+                                  onClick={() => {
+                                    setCurrentExamSubmission(submission);
+                                    setShowSubmissionModal(true);
+                                  }}
+                                  title="Voir les détails"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </button>
+                                
+                                {submission.status === 'submitted' && (
+                                  <select
+                                    value={submission.examinerId || ''}
+                                    onChange={(e) => {
+                                      const examinerId = e.target.value;
+                                      if (examinerId) {
+                                        assignExaminer(submission.id, examinerId);
+                                      }
+                                    }}
+                                    className="text-xs border rounded p-1"
+                                    title="Assigner un examinateur"
+                                    defaultValue=""
+                                  >
+                                    <option value="">Assigner...</option>
+                                    {examiners
+                                      .filter(e => e.isActive)
+                                      .map(examiner => (
+                                        <option key={examiner.id} value={examiner.id}>
+                                          {examiner.firstName[0]}. {examiner.lastName}
+                                        </option>
+                                      ))}
+                                  </select>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </Card>
+            </div>
+          )}
+
+          {/* Modal de soumission d'examen */}
+          {showSubmissionModal && currentExamSubmission && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">
+                      Soumission de {currentExamSubmission.candidateName}
+                    </h3>
+                    <button 
+                      onClick={() => setShowSubmissionModal(false)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {currentExamSubmission.answers.map((answer, index) => {
+                      const question = questions.find(q => q.id === answer.questionId);
+                      if (!question) return null;
+                      
+                      return (
+                        <div key={answer.questionId} className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-2">
+                            Question {index + 1}: {question.questionText}
+                          </h4>
+                          <div className="bg-gray-50 p-3 rounded-md">
+                            <p className="font-medium text-sm text-gray-700 mb-1">Réponse du candidat:</p>
+                            <p className="whitespace-pre-wrap">
+                              {Array.isArray(answer.answer) 
+                                ? answer.answer.join(', ')
+                                : answer.answer || 'Aucune réponse fournie'}
+                            </p>
+                          </div>
+                          {answer.score !== undefined && (
+                            <div className="mt-2">
+                              <p className="text-sm font-medium">
+                                Note: {answer.score} / 20
+                              </p>
+                              {answer.feedback && (
+                                <div className="mt-1 text-sm text-gray-600">
+                                  <p className="font-medium">Commentaire:</p>
+                                  <p>{answer.feedback}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      onClick={() => setShowSubmissionModal(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Fermer
+                    </button>
+                    {currentExamSubmission.status !== 'graded' && (
+                      <button
+                        onClick={() => {
+                          setShowSubmissionModal(false);
+                          setShowGradingModal(true);
+                        }}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700"
+                      >
+                        {currentExamSubmission.status === 'under_review' 
+                          ? 'Continuer la correction' 
+                          : 'Commencer la correction'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal de correction */}
+          {showGradingModal && currentExamSubmission && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">
+                      Correction de {currentExamSubmission.candidateName}
+                    </h3>
+                    <button 
+                      onClick={() => {
+                        setShowGradingModal(false);
+                        setGrades({});
+                      }}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    submitGrading(currentExamSubmission.id, grades);
+                    setShowGradingModal(false);
+                    setGrades({});
+                  }}>
+                    <div className="space-y-6">
+                      {currentExamSubmission.answers.map((answer, index) => {
+                        const question = questions.find(q => q.id === answer.questionId);
+                        if (!question) return null;
+                        
+                        return (
+                          <div key={answer.questionId} className="border rounded-lg p-4">
+                            <h4 className="font-medium mb-2">
+                              Question {index + 1}: {question.questionText}
+                            </h4>
+                            <div className="bg-gray-50 p-3 rounded-md mb-3">
+                              <p className="font-medium text-sm text-gray-700 mb-1">Réponse du candidat:</p>
+                              <p className="whitespace-pre-wrap">
+                                {Array.isArray(answer.answer) 
+                                  ? answer.answer.join(', ')
+                                  : answer.answer || 'Aucune réponse fournie'}
+                              </p>
+                            </div>
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Note (sur 20)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="20"
+                                step="0.5"
+                                value={grades[answer.questionId]?.score ?? ''}
+                                onChange={(e) => {
+                                  const score = parseFloat(e.target.value);
+                                  setGrades(prev => ({
+                                    ...prev,
+                                    [answer.questionId]: {
+                                      ...prev[answer.questionId],
+                                      score: isNaN(score) ? 0 : Math.min(20, Math.max(0, score))
+                                    }
+                                  }));
+                                }}
+                                className="w-20 p-1 border rounded-md"
+                                required
+                              />
+                            </div>
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Commentaire
+                              </label>
+                              <textarea
+                                value={grades[answer.questionId]?.feedback ?? ''}
+                                onChange={(e) => {
+                                  setGrades(prev => ({
+                                    ...prev,
+                                    [answer.questionId]: {
+                                      ...prev[answer.questionId],
+                                      feedback: e.target.value
+                                    }
+                                  }));
+                                }}
+                                rows={3}
+                                className="w-full p-2 border rounded-md"
+                                placeholder="Commentaires sur la réponse..."
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    <div className="mt-6 flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowGradingModal(false);
+                          setGrades({});
+                        }}
+                        className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+                      >
+                        Enregistrer la correction
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1121,6 +2073,13 @@ export const AdminDashboard: React.FC = () => {
                   type="email"
                   value={examinerForm.email}
                   onChange={(e) => setExaminerForm({...examinerForm, email: e.target.value})}
+                />
+                <Input
+                  label="Mot de passe"
+                  type="password"
+                  value={examinerForm.password}
+                  onChange={(e) => setExaminerForm({...examinerForm, password: e.target.value})}
+                  placeholder="Créez un mot de passe sécurisé"
                 />
                 <Input
                   label="Téléphone"

@@ -45,6 +45,7 @@ export interface CertificationModule {
   questions: Question[];
   duration: number; // 60 minutes (20 questions × 3 minutes)
   order: number;
+  category?: string;
 }
 
 export interface CertificationType {
@@ -59,26 +60,19 @@ export interface CertificationType {
   modules: CertificationModule[];
   isActive: boolean;
 }
-
-export interface CertificationModule {
-  id: string;
-  name: string;
-  description: string;
-  questions: Question[];
-  duration: number; // 60 minutes (20 questions × 3 minutes)
-  order: number;
-}
-
 export interface Exam {
   id: string;
   title: string;
   description: string;
-  duration: number; // in minutes
+  duration: number; // en minutes
   questions: Question[];
   isActive: boolean;
   price: number;
   certificationType?: string;
   moduleId?: string;
+  moduleName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Question {
@@ -88,7 +82,7 @@ export interface Question {
   options?: string[];
   correctAnswer?: string | number;
   points: number;
-  category: 'leadership' | 'competences' | 'entrepreneuriat';
+  category: string; // Plus flexible pour différentes catégories
 }
 
 export interface ExamSubmission {

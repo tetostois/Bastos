@@ -608,20 +608,21 @@
 
 
 import React, { useState } from 'react';
-import { CheckCircle, Clock, CreditCard, FileText, BookOpen, AlertCircle, Download, ArrowRight, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle, Clock, CreditCard, FileText, BookOpen, AlertCircle, Download, Play } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useExam } from '../contexts/ExamContext';
-// import { certificationTypes, getCertificationById } from '../data/certifications';
 import { CertificationSelector } from '../components/certification/CertificationSelector';
 import { ModuleProgress } from '../components/certification/ModuleProgress';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PaymentForm } from '../components/payment/PaymentForm';
 import { Input } from '../components/ui/Input';
-import { certificationTypes, getCertificationById } from '../components/data/certifications';
+import { getCertificationById } from '../components/data/certifications';
 
 
 export const CandidateDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { startModule, isExamActive } = useExam();
   const [showPayment, setShowPayment] = useState(false);
@@ -680,7 +681,17 @@ export const CandidateDashboard: React.FC = () => {
   
   const handleContinueModule = (moduleId: string) => {
     if (!currentCertification) return;
+    
+    // Démarrer le module
     startModule(currentCertification.id, moduleId);
+    
+    // Mettre à jour l'état de l'utilisateur pour refléter le module en cours
+    if (user) {
+      user.currentModule = moduleId;
+    }
+    
+    // Rediriger vers la page d'examen
+    navigate('/exam');
   };
 
   const handlePaymentTypeSelect = (type: 'full' | 'per-module') => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Question } from '../../types';
 import { Card } from '../ui/Card';
-import { Input } from '../ui/Input';
+import { Clock, AlertCircle } from 'lucide-react';
 
 interface QuestionCardProps {
   question: Question;
@@ -9,6 +9,7 @@ interface QuestionCardProps {
   totalQuestions: number;
   currentAnswer?: string | number;
   onAnswerChange: (answer: string | number) => void;
+  timeLeft?: number; // Temps restant en secondes
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -16,7 +17,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   questionNumber,
   totalQuestions,
   currentAnswer,
-  onAnswerChange
+  onAnswerChange,
+  timeLeft = 0
 }) => {
   const [textAnswer, setTextAnswer] = useState(
     typeof currentAnswer === 'string' ? currentAnswer : ''
@@ -31,19 +33,47 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     onAnswerChange(index);
   };
 
+  // Formatage du temps restant
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Vérification si le temps est critique (moins de 30 secondes)
+  const isTimeCritical = timeLeft !== undefined && timeLeft <= 30;
+
   return (
     <Card className="mb-6">
       <div className="mb-4">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-sm font-medium text-blue-600">
-            Question {questionNumber} sur {totalQuestions}
-          </span>
-          <span className="text-sm text-gray-500">
-            {question.points} point{question.points > 1 ? 's' : ''}
-          </span>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-3">
+          <div>
+            <span className="text-sm font-medium text-blue-600">
+              Question {questionNumber} sur {totalQuestions}
+            </span>
+            <span className="text-sm text-gray-500 ml-3">
+              {question.points} point{question.points > 1 ? 's' : ''}
+            </span>
+          </div>
+          
+          {timeLeft !== undefined && (
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
+              isTimeCritical 
+                ? 'bg-red-100 text-red-800' 
+                : 'bg-blue-100 text-blue-800'
+            }`}>
+              {isTimeCritical ? (
+                <AlertCircle className="h-4 w-4 animate-pulse" />
+              ) : (
+                <Clock className="h-4 w-4" />
+              )}
+              <span className="font-mono">{formatTime(timeLeft)}</span>
+              {isTimeCritical && <span className="text-xs ml-1">Dépêchez-vous!</span>}
+            </div>
+          )}
         </div>
         
-        <h3 className="text-lg font-medium text-gray-900 leading-relaxed">
+        <h3 className="text-lg font-medium text-gray-900 leading-relaxed mb-4">
           {question.text}
         </h3>
       </div>
@@ -78,13 +108,23 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <textarea
             value={textAnswer}
             onChange={(e) => handleTextChange(e.target.value)}
-            className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className={`w-full p-4 border-2 ${
+              isTimeCritical ? 'border-red-300' : 'border-gray-300'
+            } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors`}
             rows={6}
             placeholder="Saisissez votre réponse détaillée ici..."
           />
-          <div className="mt-2 flex justify-between text-sm text-gray-500">
+          <div className="mt-2 flex flex-col sm:flex-row justify-between gap-2 text-sm text-gray-500">
             <span>Développez votre réponse avec des exemples concrets</span>
-            <span>{textAnswer.length} caractères</span>
+            <div className="flex items-center gap-2">
+              <span>{textAnswer.length} caractères</span>
+              {timeLeft === 0 && (
+                <span className="text-red-600 font-medium flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  Temps écoulé
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}

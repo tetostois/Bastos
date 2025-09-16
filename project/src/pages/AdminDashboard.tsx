@@ -1022,7 +1022,7 @@ export const AdminDashboard: React.FC = () => {
                       onClick={() => openUserModal('create')}
                     >
                       <UserPlus className="h-4 w-4 mr-2" />
-                      Créer un utilisateur
+                      Créer un administrateur
                     </Button>
                     <Button 
                       className="w-full justify-start" 
@@ -1073,7 +1073,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
                 <Button onClick={() => openUserModal('create')}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Nouvel utilisateur
+                  Nouvel administrateur
                 </Button>
               </div>
 
@@ -1993,16 +1993,17 @@ export const AdminDashboard: React.FC = () => {
                 />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
-                  <select
-                    value={userForm.role}
-                    onChange={(e) => setUserForm({...userForm, role: e.target.value as any})}
-                    disabled={modalMode === 'view'}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="candidate">Candidat</option>
-                    <option value="examiner">Examinateur</option>
-                    <option value="admin">Administrateur</option>
-                  </select>
+                  <input
+                    type="text"
+                    value="Administrateur"
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                  />
+                  <input
+                    type="hidden"
+                    value="admin"
+                    onChange={(e) => setUserForm({...userForm, role: 'admin'})}
+                  />
                 </div>
                 <Input
                   label="Profession"

@@ -134,7 +134,7 @@ src/
 
 ---
 
-## 🔌 APIs Backend à Développer (Go)
+## 🔌 APIs Backend à Développer 
 
 ### 🔵 **Authentication API**
 ```go

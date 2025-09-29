@@ -17,7 +17,7 @@ export const RegisterForm: React.FC = () => {
     city: '',
     country: '',
     profession: '',
-    level: 'debutant' as 'debutant' | 'intermediaire' | 'expert',
+    
     password: '',
     confirmPassword: ''
   });
@@ -55,6 +55,29 @@ export const RegisterForm: React.FC = () => {
 
     const success = await register(formData, formData.password);
     if (!success) {
+      // Tente de récupérer les erreurs détaillées stockées par AuthContext
+      try {
+        const raw = sessionStorage.getItem('lastRegisterErrors');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const be = parsed?.errors || {};
+          setErrors({
+            email: be.email?.[0] || '',
+            firstName: be.first_name?.[0] || '',
+            lastName: be.last_name?.[0] || '',
+            phone: be.phone?.[0] || '',
+            password: be.password?.[0] || '',
+            confirmPassword: be.password_confirmation?.[0] || '',
+            birthDate: be.date_of_birth?.[0] || '',
+            birthPlace: be.place_of_birth?.[0] || '',
+            city: be.city?.[0] || '',
+            country: be.country?.[0] || '',
+            profession: be.profession?.[0] || '',
+            address: be.address?.[0] || '',
+          });
+          return;
+        }
+      } catch {}
       setErrors({ email: 'Erreur lors de l\'inscription' });
     }
   };

@@ -11,7 +11,10 @@ import {
   UsePipes, 
   ValidationPipe,
   ForbiddenException,
-  ConflictException
+  ConflictException,
+  Query,
+  ParseUUIDPipe,
+  NotFoundException
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { 
@@ -21,12 +24,16 @@ import {
   ApiBearerAuth, 
   ApiBody, 
   ApiParam,
-  ApiQuery
+  ApiQuery,
+  ApiOkResponse
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateCandidateDto } from './dto/create-candidate.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
+import { CreateExaminerDto } from './dto/create-examiner.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
+import { UserResponseDto } from './dto/user-response.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 

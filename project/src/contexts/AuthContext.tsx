@@ -3,134 +3,162 @@ import { User, AuthContextType } from '../types';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock data pour la démo
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@leadership.com',
-    firstName: 'Admin',
-    lastName: 'System',
-    phone: '+237123456789',
-    address: '123 Admin Street',
-    birthDate: '1980-01-01',
-    birthPlace: 'Yaoundé',
-    city: 'Yaoundé',
-    country: 'Cameroun',
-    profession: 'Administrateur',
-    role: 'admin',
-    isActive: true,
-    createdAt: '2024-01-01',
-  },
-  {
-    id: '2',
-    email: 'examiner@leadership.com',
-    firstName: 'John',
-    lastName: 'Examiner',
-    phone: '+237123456790',
-    address: '456 Examiner Avenue',
-    birthDate: '1975-05-15',
-    birthPlace: 'Douala',
-    city: 'Douala',
-    country: 'Cameroun',
-    profession: 'Professeur',
-    role: 'examiner',
-    isActive: true,
-    createdAt: '2024-01-02',
-  },
-  {
-    id: '3',
-    email: 'candidate@leadership.com',
-    firstName: 'Marie',
-    lastName: 'Candidate',
-    phone: '+237123456791',
-    address: '789 Candidate Street',
-    birthDate: '1990-03-20',
-    birthPlace: 'Bamenda',
-    city: 'Bamenda',
-    country: 'Cameroun',
-    profession: 'Ingénieur',
-    role: 'candidate',
-    isActive: true,
-    createdAt: '2024-01-03',
-    hasPaid: true,
-    examTaken: false,
-  }
-];
+// Base URL de l'API Laravel
+const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+
+const getToken = () => localStorage.getItem('token') || '';
+const setSession = (token: string, user: any) => {
+  localStorage.setItem('token', token);
+  localStorage.setItem('user', JSON.stringify(user));
+};
+const clearSession = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
-    
-    // Simulation de l'API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const foundUser = mockUsers.find(u => u.email === email);
-    
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('user', JSON.stringify(foundUser));
-      setIsLoading(false);
-      return true;
-    }
-    
-    setIsLoading(false);
-    return false;
+  // Normalise les champs utilisateur du backend (snake_case) vers camelCase
+  const normalizeUser = (raw: any): User => {
+    if (!raw) return null as unknown as User;
+    return {
+      id: String(raw.id ?? raw.uuid ?? ''),
+      firstName: raw.firstName ?? raw.first_name ?? '',
+      lastName: raw.lastName ?? raw.last_name ?? '',
+      email: raw.email ?? '',
+      phone: raw.phone ?? '',
+      role: (raw.role ?? 'candidate') as User['role'],
+      isActive: Boolean(raw.isActive ?? raw.is_active ?? true),
+      address: raw.address ?? '',
+      birthDate: raw.birthDate ?? raw.date_of_birth ?? '',
+      birthPlace: raw.birthPlace ?? raw.place_of_birth ?? '',
+      city: raw.city ?? '',
+      country: raw.country ?? '',
+      profession: raw.profession ?? '',
+      createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+      // champs facultatifs connus dans l'app
+      specialization: raw.specialization ?? undefined,
+      experience: raw.experience ?? undefined,
+    } as User;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const login = async (email: string, password: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const normalized = normalizeUser(data.user);
+      setSession(data.access_token, normalized);
+      setUser(normalized);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const token = getToken();
+      if (token) {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } finally {
+      clearSession();
+      setUser(null);
+    }
   };
 
   const register = async (userData: Partial<User>, password: string): Promise<boolean> => {
     setIsLoading(true);
-    
-    // Simulation de l'API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const newUser: User = {
-      id: Date.now().toString(),
-      email: userData.email!,
-      firstName: userData.firstName!,
-      lastName: userData.lastName!,
-      phone: userData.phone!,
-      address: userData.address!,
-      birthDate: userData.birthDate!,
-      birthPlace: userData.birthPlace!,
-      city: userData.city!,
-      country: userData.country!,
-      profession: userData.profession!,
-      role: 'candidate',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      hasPaid: false,
-      examTaken: false,
-    };
-
-    mockUsers.push(newUser);
-    setUser(newUser);
-    localStorage.setItem('user', JSON.stringify(newUser));
-    setIsLoading(false);
-    return true;
+    try {
+      const payload = {
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phone: userData.phone,
+        address: userData.address,
+        birthDate: userData.birthDate,
+        birthPlace: userData.birthPlace,
+        city: userData.city,
+        country: userData.country,
+        profession: userData.profession,
+        password: password,
+        confirmPassword: password
+      };
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        try {
+          const err = await res.json();
+          console.error('Register error:', err);
+          if (err && typeof window !== 'undefined') {
+            sessionStorage.setItem('lastRegisterErrors', JSON.stringify(err));
+          }
+        } catch {
+          const txt = await res.text().catch(() => '');
+          if (txt) console.error('Register error (text):', txt);
+        }
+        return false;
+      }
+      const data = await res.json();
+      const normalized = normalizeUser(data.user);
+      setSession(data.access_token, normalized);
+      setUser(normalized);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Récupérer l'utilisateur du localStorage au chargement
+  // Récupérer l'utilisateur du localStorage au chargement et optionnellement valider auprès de l'API
   React.useEffect(() => {
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUser(normalizeUser(parsed));
+      } catch {
+        setUser(null);
+      }
+    }
+    // Optionnel: valider le token et rafraîchir le profil
+    const token = getToken();
+    if (token) {
+      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(u => { if (u) {
+          const normalized = normalizeUser(u);
+          setUser(normalized);
+          localStorage.setItem('user', JSON.stringify(normalized));
+        } })
+        .catch(() => {});
     }
   }, []);
 
   const value: AuthContextType = {
     user,
     login,
-    logout,
     register,
+    logout,
     isLoading,
+    getToken,
   };
 
   return (

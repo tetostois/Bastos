@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Users, 
   UserCheck, 
@@ -157,68 +157,72 @@ export const AdminDashboard: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedExaminer, setSelectedExaminer] = useState<Examiner | null>(null);
 
-  // Mock data
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      firstName: 'Marie',
-      lastName: 'Dubois',
-      email: 'marie.dubois@email.com',
-      phone: '+237123456789',
-      role: 'candidate',
-      isActive: true,
-      createdAt: '2024-01-15',
-      profession: 'Manager'
-    },
-    {
-      id: '2',
-      firstName: 'Jean',
-      lastName: 'Kamga',
-      email: 'jean.kamga@email.com',
-      phone: '+237123456790',
-      role: 'examiner',
-      isActive: true,
-      createdAt: '2024-01-10',
-      specialization: 'Leadership',
-      experience: '5 ans'
-    },
-    {
-      id: '3',
-      firstName: 'Paul',
-      lastName: 'Nkomo',
-      email: 'paul.nkomo@email.com',
-      phone: '+237123456791',
-      role: 'candidate',
-      isActive: false,
-      createdAt: '2024-01-12',
-      profession: 'Ingénieur'
-    }
-  ]);
+  // API base and helpers
+  const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+  const getToken = () => localStorage.getItem('token') || '';
+  const normalizeUserFromBackend = (raw: any): User => ({
+    id: String(raw.id ?? raw.uuid ?? ''),
+    firstName: raw.firstName ?? raw.first_name ?? '',
+    lastName: raw.lastName ?? raw.last_name ?? '',
+    email: raw.email ?? '',
+    phone: raw.phone ?? '',
+    role: (raw.role ?? 'candidate') as User['role'],
+    isActive: Boolean(raw.isActive ?? raw.is_active ?? true),
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    profession: raw.profession ?? '',
+    specialization: raw.specialization ?? '',
+    experience: raw.experience ?? '',
+  });
 
-  const [examiners, setExaminers] = useState<Examiner[]>([
-    {
-      id: '1',
-      firstName: 'Dr. Jean',
-      lastName: 'Kamga',
-      email: 'jean.kamga@email.com',
-      phone: '+237123456790',
-      specialization: 'Leadership & Management',
-      experience: '5 ans d\'expérience',
-      isActive: true,
-      assignedExams: 3
-    },
-    {
-      id: '2',
-      firstName: 'Prof. Marie',
-      lastName: 'Tchinda',
-      email: 'marie.tchinda@email.com',
-      phone: '+237123456792',
-      specialization: 'Psychologie Organisationnelle',
-      experience: '8 ans d\'expérience',
-      isActive: true,
-      assignedExams: 2
-    }
-  ]);
+  // Questions helpers
+  const normalizeQuestionFromBackend = (raw: any): ExamQuestion => ({
+    id: String(raw.id),
+    certificationType: raw.certification_type,
+    module: raw.module,
+    questionType: raw.question_type,
+    questionText: raw.question_text,
+    referenceAnswer: raw.reference_answer || '',
+    instructions: raw.instructions || '',
+    points: Number(raw.points),
+    timeLimit: Number(raw.time_limit),
+    isRequired: Boolean(raw.is_required),
+    answerOptions: Array.isArray(raw.answer_options) ? raw.answer_options.map((o: any) => ({ id: String(o.id ?? ''), text: o.text ?? '', isCorrect: !!o.isCorrect })) : undefined,
+    createdAt: raw.created_at ?? new Date().toISOString(),
+    updatedAt: raw.updated_at ?? new Date().toISOString(),
+    isPublished: !!raw.is_published,
+    publishedAt: raw.published_at ?? undefined,
+  });
+  const toExaminer = (u: User): Examiner => ({
+    id: u.id,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    email: u.email,
+    phone: u.phone,
+    specialization: u.specialization || '—',
+    experience: u.experience || '',
+    isActive: u.isActive,
+    assignedExams: 0,
+  });
+
+  // Data from API
+  const [users, setUsers] = useState<User[]>([]);
+  const [examiners, setExaminers] = useState<Examiner[]>([]);
+
+  const loadUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: any[] = Array.isArray(data?.data) ? data.data : [];
+      const mapped: User[] = list.map((raw: any) => normalizeUserFromBackend(raw));
+      setUsers(mapped);
+      setExaminers(mapped.filter((u: User) => u.role === 'examiner').map(toExaminer));
+    } catch {}
+  };
+
+  useEffect(() => { loadUsers(); }, []);
 
   // Exam submissions state - initialized only once
   const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>(() => [
@@ -326,84 +330,133 @@ export const AdminDashboard: React.FC = () => {
   const [selectedExam, setSelectedExam] = useState<{
     certificationType: CertificationType;
     module: ModuleType;
-  } | null>(null);
+  } | null>({
+    certificationType: 'initiation_pratique_generale',
+    module: 'leadership'
+  });
   
   const [currentExamSubmission, setCurrentExamSubmission] = useState<ExamSubmissionData | null>(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [showGradingModal, setShowGradingModal] = useState(false);
   const [grades, setGrades] = useState<Record<string, { score: number; feedback: string }>>({});
 
-  // Fonction pour publier un examen
-  const publishExam = (certificationType: CertificationType, module: ModuleType) => {
-    const now = new Date().toISOString();
-    
-    // Marquer les questions comme publiées
-    const updatedQuestions = questions.map(q => ({
-      ...q,
-      isPublished: q.certificationType === certificationType && q.module === module ? true : q.isPublished,
-      publishedAt: q.certificationType === certificationType && q.module === module ? now : q.publishedAt
-    }));
-    
-    setQuestions(updatedQuestions);
-    
-    // Créer une nouvelle soumission d'examen pour chaque candidat
-    const candidates = users.filter(u => u.role === 'candidate');
-    const examQuestions = questions.filter(
-      q => q.certificationType === certificationType && q.module === module && q.isPublished
-    );
-    
-    if (examQuestions.length === 0) {
-      alert('Aucune question n\'est disponible pour cet examen.');
+  // Chargement des questions depuis l'API
+  const loadQuestions = async (cert: CertificationType, mod: ModuleType) => {
+    try {
+      const url = `${API_BASE}/admin/questions?certification_type=${encodeURIComponent(cert)}&module=${encodeURIComponent(mod)}`;
+      const res = await fetch(url, { 
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        } 
+      });
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || 'Erreur lors du chargement des questions');
+      }
+      
+      const data = await res.json();
+      const list: any[] = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      
+      // Trier les questions : publiées d'abord, puis par date de création
+      const sortedList = [...list].sort((a, b) => {
+        if (a.is_published !== b.is_published) {
+          return a.is_published ? -1 : 1;
+        }
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+      
+      setQuestions(sortedList.map(normalizeQuestionFromBackend));
+    } catch (error: unknown) {
+      console.error('Erreur lors du chargement des questions:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur inconnue est survenue';
+      alert(errorMessage);
+      setQuestions([]);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'exam-questions') {
+      loadQuestions(selectedCertification, selectedModule);
+    }
+  }, [activeSection, selectedCertification, selectedModule]);
+
+  // Fonction pour publier un examen (API)
+  const publishExam = async (certificationType: CertificationType, module: ModuleType) => {
+    if (!window.confirm(`Voulez-vous vraiment publier l'examen pour la certification "${certificationType}" et le module "${module}" ? Les questions précédemment publiées pour ce module seront remplacées.`)) {
       return;
     }
-    
-    const newSubmissions: ExamSubmissionData[] = candidates.map(candidate => ({
-      id: `sub-${Date.now()}-${candidate.id}`,
-      examId: `exam-${certificationType}-${module}`,
-      candidateId: candidate.id,
-      candidateName: `${candidate.firstName} ${candidate.lastName}`,
-      answers: examQuestions.map(q => ({
-        questionId: q.id,
-        answer: '',
-        submittedAt: '',
-        score: 0
-      })),
-      status: 'draft',
-      startedAt: now,
-      totalScore: 0
-    }));
-    
-    setExamSubmissionsState(prev => [...prev, ...newSubmissions]);
-    
-    // Assigner les examens aux examinateurs
-    const activeExaminers = examiners.filter(e => e.isActive);
-    if (activeExaminers.length === 0) {
-      alert('Aucun examinateur actif disponible pour la correction.');
-      return;
+
+    try {
+      // Filtrer les questions correspondant à la certification et au module
+      const questionsToPublish = questions.filter(
+        q => q.certificationType === certificationType && 
+             q.module === module
+      );
+
+      if (questionsToPublish.length === 0) {
+        alert('Aucune question à publier pour cette certification et ce module');
+        return;
+      }
+
+      const questionIds = questionsToPublish.map(q => q.id);
+      
+      const res = await fetch(`${API_BASE}/admin/exams/publish`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          certification_type: certificationType, 
+          module,
+          question_ids: questionIds
+        })
+      });
+      
+      const body = await res.json().catch(() => ({}));
+      
+      if (!res.ok) {
+        throw new Error(body?.message || 'Erreur lors de la publication');
+      }
+      
+      // Mettre à jour l'état local des questions
+      const updatedQuestions = questions
+        .filter((q): q is ExamQuestion & { id: string } => !!q.id) // Filtrer les questions sans ID
+        .map(q => {
+          if (q.certificationType === certificationType && q.module === module) {
+            // Dépublier toutes les questions de ce module
+            return { 
+              ...q, 
+              isPublished: false, 
+              publishedAt: undefined // Utiliser undefined au lieu de null pour correspondre au type
+            };
+          }
+          return q;
+        })
+        .map(q => 
+          questionIds.includes(q.id) 
+            ? { 
+                ...q, 
+                isPublished: true, 
+                publishedAt: new Date().toISOString() 
+              } 
+            : q
+        );
+      
+      setQuestions(updatedQuestions);
+      
+      // Recharger les questions pour s'assurer que tout est à jour
+      await loadQuestions(selectedCertification, selectedModule);
+      
+      alert(`${body.published_count || questionIds.length} questions publiées avec succès pour le module ${module}`);
+      
+    } catch (e) {
+      console.error('Erreur lors de la publication :', e);
+      alert(`Erreur lors de la publication : ${e.message}`);
     }
-    
-    const newAssignments = newSubmissions.map((submission, index) => ({
-      id: `assign-${Date.now()}-${index}`,
-      examId: submission.examId,
-      submissionId: submission.id,
-      examinerId: activeExaminers[index % activeExaminers.length].id,
-      assignedAt: now,
-      status: 'pending' as const,
-      completedAt: undefined
-    }));
-    
-    setExamAssignmentsState(prev => [...prev, ...newAssignments]);
-    
-    // Mettre à jour le compteur d'examens assignés pour les examinateurs
-    const updatedExaminers = examiners.map((examiner, index) => ({
-      ...examiner,
-      assignedExams: examiner.assignedExams + 
-        newAssignments.filter(a => a.examinerId === examiner.id).length
-    }));
-    
-    setExaminers(updatedExaminers);
-    
-    alert(`Examen publié avec succès pour ${candidates.length} candidats.`);
   };
   
   // Fonction pour récupérer les soumissions d'un examinateur
@@ -513,7 +566,9 @@ export const AdminDashboard: React.FC = () => {
     role: 'candidate' as 'admin' | 'examiner' | 'candidate',
     profession: '',
     specialization: '',
-    experience: ''
+    experience: '',
+    password: '',
+    passwordConfirm: ''
   });
 
   // Examiner form state
@@ -522,6 +577,7 @@ export const AdminDashboard: React.FC = () => {
     lastName: '',
     email: '',
     password: '',
+    passwordConfirm: '',
     phone: '',
     specialization: '',
     experience: ''
@@ -561,7 +617,9 @@ export const AdminDashboard: React.FC = () => {
         role: user.role,
         profession: user.profession || '',
         specialization: user.specialization || '',
-        experience: user.experience || ''
+        experience: user.experience || '',
+        password: '',
+        passwordConfirm: ''
       });
     } else {
       setUserForm({
@@ -569,10 +627,12 @@ export const AdminDashboard: React.FC = () => {
         lastName: '',
         email: '',
         phone: '',
-        role: 'candidate',
+        role: 'admin',
         profession: '',
         specialization: '',
-        experience: ''
+        experience: '',
+        password: '',
+        passwordConfirm: ''
       });
     }
     setShowUserModal(true);
@@ -583,39 +643,75 @@ export const AdminDashboard: React.FC = () => {
     setSelectedUser(null);
   };
 
-  const saveUser = () => {
-    if (modalMode === 'create') {
-      const newUser: User = {
-        id: Date.now().toString(),
-        ...userForm,
-        isActive: true,
-        createdAt: new Date().toISOString().split('T')[0]
-      };
-      setUsers([...users, newUser]);
-      console.log('Nouvel utilisateur créé:', newUser);
-    } else if (modalMode === 'edit' && selectedUser) {
-      const updatedUsers = users.map(u => 
-        u.id === selectedUser.id ? { ...u, ...userForm } : u
-      );
-      setUsers(updatedUsers);
-      console.log('Utilisateur modifié:', { ...selectedUser, ...userForm });
+  const saveUser = async () => {
+    try {
+      if (modalMode === 'create') {
+        if (!userForm.password || userForm.password !== userForm.passwordConfirm || userForm.password.length < 6) {
+          console.error('Mot de passe invalide ou confirmation non correspondante (min 6 caractères)');
+          return;
+        }
+        // Optionnel: créer un admin si on a un flux UI pour ça
+        const payload = {
+          first_name: userForm.firstName,
+          last_name: userForm.lastName,
+          email: userForm.email,
+          phone: userForm.phone,
+          profession: userForm.profession || undefined,
+          password: userForm.password,
+          password_confirmation: userForm.passwordConfirm,
+        };
+        const res = await fetch(`${API_BASE}/admin/users/create-admin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          console.error('Erreur création admin');
+        }
+      } else if (modalMode === 'edit' && selectedUser) {
+        const payload: any = {
+          first_name: userForm.firstName,
+          last_name: userForm.lastName,
+          email: userForm.email,
+          phone: userForm.phone,
+          profession: userForm.profession || undefined,
+        };
+        const res = await fetch(`${API_BASE}/admin/users/${selectedUser.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          console.error('Erreur mise à jour utilisateur');
+        }
+      }
+      await loadUsers();
+    } finally {
+      closeUserModal();
     }
-    closeUserModal();
   };
 
-  const deleteUser = (userId: string) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
-      setUsers(users.filter(u => u.id !== userId));
-      console.log('Utilisateur supprimé:', userId);
+  const deleteUser = async (userId: string) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
+    const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${getToken()}` }
+    });
+    if (!res.ok) {
+      console.error('Suppression impossible (liens existants ?)');
     }
+    await loadUsers();
   };
 
-  const toggleUserStatus = (userId: string) => {
-    const updatedUsers = users.map(u => 
-      u.id === userId ? { ...u, isActive: !u.isActive } : u
-    );
-    setUsers(updatedUsers);
-    console.log('Statut utilisateur modifié:', userId);
+  const toggleUserStatus = async (userId: string) => {
+    const current = users.find(u => u.id === userId);
+    const is_active = current ? !current.isActive : true;
+    await fetch(`${API_BASE}/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ is_active })
+    });
+    await loadUsers();
   };
 
   // Examiner Modal Functions
@@ -630,7 +726,8 @@ export const AdminDashboard: React.FC = () => {
         phone: examiner.phone,
         specialization: examiner.specialization,
         experience: examiner.experience,
-        password: '' // Ne pas afficher le mot de passe existant pour des raisons de sécurité
+        password: '', // Ne pas afficher le mot de passe existant pour des raisons de sécurité
+        passwordConfirm: ''
       });
     } else {
       setExaminerForm({
@@ -638,6 +735,7 @@ export const AdminDashboard: React.FC = () => {
         lastName: '',
         email: '',
         password: '',
+        passwordConfirm: '',
         phone: '',
         specialization: '',
         experience: ''
@@ -651,32 +749,60 @@ export const AdminDashboard: React.FC = () => {
     setSelectedExaminer(null);
   };
 
-  const saveExaminer = () => {
-    if (modalMode === 'create') {
-      const newExaminer: Examiner = {
-        id: Date.now().toString(),
-        ...examinerForm,
-        isActive: true,
-        assignedExams: 0
-      };
-      setExaminers([...examiners, newExaminer]);
-      console.log('Nouvel examinateur créé:', newExaminer);
-    } else if (modalMode === 'edit' && selectedExaminer) {
-      const updatedExaminers = examiners.map(e => 
-        e.id === selectedExaminer.id ? { ...e, ...examinerForm } : e
-      );
-      setExaminers(updatedExaminers);
-      console.log('Examinateur modifié:', { ...selectedExaminer, ...examinerForm });
+  const saveExaminer = async () => {
+    try {
+      if (modalMode === 'create') {
+        if (!examinerForm.password || examinerForm.password !== examinerForm.passwordConfirm || examinerForm.password.length < 6) {
+          console.error('Mot de passe examinateur invalide ou confirmation non correspondante (min 6 caractères)');
+          return;
+        }
+        const payload = {
+          first_name: examinerForm.firstName,
+          last_name: examinerForm.lastName,
+          email: examinerForm.email,
+          phone: examinerForm.phone,
+          specialization: examinerForm.specialization,
+          experience: examinerForm.experience || undefined,
+          password: examinerForm.password,
+          password_confirmation: examinerForm.passwordConfirm
+        };
+        const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) console.error('Erreur création examinateur');
+      } else if (modalMode === 'edit' && selectedExaminer) {
+        const payload: any = {
+          first_name: examinerForm.firstName,
+          last_name: examinerForm.lastName,
+          email: examinerForm.email,
+          phone: examinerForm.phone,
+          specialization: examinerForm.specialization || undefined,
+          experience: examinerForm.experience || undefined,
+        };
+        const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) console.error('Erreur mise à jour examinateur');
+      }
+      await loadUsers();
+    } finally {
+      closeExaminerModal();
     }
-    closeExaminerModal();
   };
 
-  const toggleExaminerStatus = (examinerId: string) => {
-    const updatedExaminers = examiners.map(e => 
-      e.id === examinerId ? { ...e, isActive: !e.isActive } : e
-    );
-    setExaminers(updatedExaminers);
-    console.log('Statut examinateur modifié:', examinerId);
+  const toggleExaminerStatus = async (examinerId: string) => {
+    const current = users.find(u => u.id === examinerId);
+    const is_active = current ? !current.isActive : true;
+    await fetch(`${API_BASE}/admin/users/${examinerId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ is_active })
+    });
+    await loadUsers();
   };
 
   const sendEmailToExaminer = (examiner: Examiner) => {
@@ -787,47 +913,129 @@ export const AdminDashboard: React.FC = () => {
     }));
   };
 
-  const saveQuestion = () => {
+  const saveQuestion = async () => {
+    // Validation de base
     if (!currentQuestion.questionText || !currentQuestion.referenceAnswer) {
       alert('Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    const now = new Date().toISOString();
-    const newQuestion: ExamQuestion = {
-      id: Date.now().toString(),
-      certificationType: selectedCertification,
+    // Vérification des options QCM
+    if (currentQuestion.questionType === 'qcm' && currentQuestion.answerOptions) {
+      const hasCorrectAnswer = currentQuestion.answerOptions.some(opt => opt.isCorrect);
+      if (!hasCorrectAnswer) {
+        alert('Veuillez sélectionner au moins une réponse correcte pour le QCM');
+        return;
+      }
+    }
+
+    // Préparation des données avec conversion explicite des types
+    const payload: any = {
+      certification_type: selectedCertification,
       module: selectedModule,
-      questionType: currentQuestion.questionType || 'qcm',
-      questionText: currentQuestion.questionText || '',
-      referenceAnswer: currentQuestion.referenceAnswer || '',
-      instructions: currentQuestion.instructions || '',
-      points: currentQuestion.points || 1,
-      timeLimit: currentQuestion.timeLimit || 60,
-      isRequired: currentQuestion.isRequired !== false,
-      answerOptions: currentQuestion.questionType === 'qcm' ? currentQuestion.answerOptions : undefined,
-      createdAt: now,
-      updatedAt: now
+      question_type: currentQuestion.questionType || 'qcm',
+      question_text: String(currentQuestion.questionText || ''),
+      reference_answer: String(currentQuestion.referenceAnswer || ''),
+      instructions: String(currentQuestion.instructions || ''),
+      points: Number(currentQuestion.points) || 1,
+      time_limit: Number(currentQuestion.timeLimit) || 60,
+      is_required: currentQuestion.isRequired !== false,
     };
 
-    setQuestions(prev => [...prev, newQuestion]);
-    
-    // Réinitialiser le formulaire
-    setCurrentQuestion({
-      questionType: 'qcm',
-      isRequired: true,
-      points: 1,
-      timeLimit: 60,
-      answerOptions: [
-        { id: '1', text: '', isCorrect: false },
-        { id: '2', text: '', isCorrect: false }
-      ]
-    });
+    // Gestion des options QCM si nécessaire
+    if (currentQuestion.questionType === 'qcm' && currentQuestion.answerOptions) {
+      payload.answer_options = currentQuestion.answerOptions.map(opt => ({
+        id: String(opt.id || Date.now().toString()),
+        text: String(opt.text || ''),
+        isCorrect: Boolean(opt.isCorrect)
+      }));
+    }
+
+    console.log('Données envoyées :', JSON.stringify(payload, null, 2));
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/questions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const responseText = await res.text();
+      console.log('Statut de la réponse :', res.status);
+      console.log('Corps de la réponse :', responseText);
+      
+      let body;
+      try {
+        body = responseText ? JSON.parse(responseText) : {};
+      } catch (e) {
+        console.error('Échec de l\'analyse de la réponse JSON :', responseText);
+        throw new Error('Réponse JSON invalide du serveur');
+      }
+      
+      if (!res.ok) {
+        const errorMsg = body?.message || 
+                        (body?.errors ? JSON.stringify(body.errors) : `Erreur HTTP ! statut : ${res.status}`);
+        throw new Error(errorMsg);
+      }
+      
+      // Succès - recharger les questions et réinitialiser le formulaire
+      await loadQuestions(selectedCertification, selectedModule);
+      setCurrentQuestion({
+        questionType: 'qcm',
+        isRequired: true,
+        points: 1,
+        timeLimit: 60,
+        answerOptions: [
+          { id: '1', text: '', isCorrect: false },
+          { id: '2', text: '', isCorrect: false }
+        ]
+      });
+      alert('Question enregistrée avec succès !');
+      
+    } catch (error) {
+      console.error('Erreur lors de l\'enregistrement :', error);
+      alert(`Erreur lors de l'enregistrement de la question : ${error.message}`);
+    }
   };
 
-  const deleteQuestion = (id: string) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette question ?')) {
-      setQuestions(prev => prev.filter(q => q.id !== id));
+  const deleteQuestion = async (id: string | undefined) => {
+    if (!id) {
+      console.error('Tentative de suppression d\'une question sans ID');
+      return;
+    }
+    
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette question ?')) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/admin/questions/${id}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || 'Erreur lors de la suppression de la question');
+      }
+      
+      // Recharger les questions si les sélections sont définies
+      if (selectedCertification && selectedModule) {
+        await loadQuestions(selectedCertification, selectedModule);
+      } else {
+        // Sinon, filtrer la question supprimée de l'état local
+        setQuestions(prev => prev.filter(q => q.id === id ? false : true));
+      }
+      
+      alert('Question supprimée avec succès');
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la question:', error);
+      alert(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
@@ -918,7 +1126,7 @@ export const AdminDashboard: React.FC = () => {
               </span>
               <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-medium">
-                  {user.firstName[0]}{user.lastName[0]}
+                  {(user.firstName || '').charAt(0) || '?'}{(user.lastName || '').charAt(0) || ''}
                 </span>
               </div>
             </div>
@@ -1227,16 +1435,45 @@ export const AdminDashboard: React.FC = () => {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Gestion des questions d'examen</h2>
-                <Button
-                  onClick={() => setShowPublishModal(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!selectedExam || questions.filter(
-                    q => q.certificationType === selectedExam?.certificationType && 
-                         q.module === selectedExam?.module
-                  ).length === 0}
-                >
-                  Publier l'examen
-                </Button>
+                <div>
+                  <Button
+                    onClick={() => {
+                      console.log('=== DÉBOGAGE PUBLICATION ===');
+                      console.log('Toutes les questions:', questions);
+                      console.log('Examen sélectionné:', selectedExam);
+                      const filteredQuestions = questions.filter(
+                        q => q.certificationType === selectedExam?.certificationType && 
+                             q.module === selectedExam?.module
+                      );
+                      console.log('Questions filtrées:', filteredQuestions);
+                      console.log('Nombre de questions correspondantes:', filteredQuestions.length);
+                      console.log('=== FIN DÉBOGAGE ===');
+                      setShowPublishModal(true);
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={!selectedExam || questions.filter(
+                      q => q.certificationType === selectedExam?.certificationType && 
+                           q.module === selectedExam?.module
+                    ).length === 0}
+                  >
+                    Publier l'examen
+                  </Button>
+                  <button 
+                    onClick={() => {
+                      console.log('=== ÉTAT ACTUEL ===');
+                      console.log('Questions:', questions);
+                      console.log('Selected Exam:', selectedExam);
+                      console.log('Questions filtrées:', questions.filter(
+                        q => q.certificationType === selectedExam?.certificationType && 
+                             q.module === selectedExam?.module
+                      ));
+                      console.log('==================');
+                    }}
+                    className="ml-2 text-xs text-gray-500"
+                  >
+                    (Déboguer)
+                  </button>
+                </div>
               </div>
 
               {/* Sélection de la certification et du module */}
@@ -1451,19 +1688,38 @@ export const AdminDashboard: React.FC = () => {
                 ) : (
                   <div className="space-y-4">
                     {questions.map((question) => (
-                      <div key={question.id} className="border-b border-gray-200 pb-4">
+                      <div key={question.id} className={`border rounded-lg p-4 mb-4 ${question.isPublished ? 'border-green-200 bg-green-50' : ''}`}>
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-medium">{question.questionText}</h4>
-                            <div className="text-sm text-gray-500 mt-1">
-                              {certificationLabels[question.certificationType]} • {moduleLabels[question.module]}
-                              {question.questionType === 'qcm' && ` • ${question.answerOptions?.length} options`}
-                              {question.questionType === 'free_text' && ' • Réponse libre'}
+                            <div className="flex items-center space-x-2">
+                              <h3 className="font-medium">{question.questionText}</h3>
+                              {question.isPublished && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  Publiée
+                                </span>
+                              )}
                             </div>
-                            <div className="text-sm text-gray-500 mt-1">
-                              {question.points} point{question.points > 1 ? 's' : ''} • {question.timeLimit} secondes • 
-                              {question.isRequired ? ' Obligatoire' : ' Facultative'}
-                            </div>
+                            <p className="text-sm text-gray-600">
+                              {question.questionType === 'qcm' ? 'QCM' : 'Réponse libre'} • {question.points} points • {question.timeLimit} sec
+                              {(() => {
+                                // Vérifier explicitement que publishedAt est une chaîne non vide
+                                if (typeof question.publishedAt === 'string' && question.publishedAt.trim() !== '') {
+                                  try {
+                                    const date = new Date(question.publishedAt);
+                                    if (!isNaN(date.getTime())) {
+                                      return (
+                                        <span className="ml-2 text-xs text-gray-500">
+                                          (publiée le {date.toLocaleDateString()})
+                                        </span>
+                                      );
+                                    }
+                                  } catch (e) {
+                                    console.error('Erreur de format de date:', question.publishedAt, e);
+                                  }
+                                }
+                                return null;
+                              })()}
+                            </p>
                           </div>
                           <div className="flex space-x-2">
                             <button
@@ -1487,7 +1743,13 @@ export const AdminDashboard: React.FC = () => {
                             <button
                               type="button"
                               className="text-red-600 hover:text-red-800"
-                              onClick={() => deleteQuestion(question.id)}
+                              onClick={() => {
+                                if (!question.id) {
+                                  console.error('Impossible de supprimer une question sans ID');
+                                  return;
+                                }
+                                deleteQuestion(question.id);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -2027,6 +2289,24 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </>
                 )}
+                {modalMode === 'create' && userForm.role === 'admin' && (
+                  <>
+                    <Input
+                      label="Mot de passe (min 6 caractères)"
+                      type="password"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                      disabled={modalMode === 'view'}
+                    />
+                    <Input
+                      label="Confirmer le mot de passe"
+                      type="password"
+                      value={userForm.passwordConfirm}
+                      onChange={(e) => setUserForm({ ...userForm, passwordConfirm: e.target.value })}
+                      disabled={modalMode === 'view'}
+                    />
+                  </>
+                )}
               </div>
               
               {modalMode !== 'view' && (
@@ -2075,13 +2355,22 @@ export const AdminDashboard: React.FC = () => {
                   value={examinerForm.email}
                   onChange={(e) => setExaminerForm({...examinerForm, email: e.target.value})}
                 />
-                <Input
-                  label="Mot de passe"
-                  type="password"
-                  value={examinerForm.password}
-                  onChange={(e) => setExaminerForm({...examinerForm, password: e.target.value})}
-                  placeholder="Créez un mot de passe sécurisé"
-                />
+                {modalMode === 'create' && (
+                  <>
+                    <Input
+                      label="Mot de passe (min 6 caractères)"
+                      type="password"
+                      value={examinerForm.password}
+                      onChange={(e) => setExaminerForm({ ...examinerForm, password: e.target.value })}
+                    />
+                    <Input
+                      label="Confirmer le mot de passe"
+                      type="password"
+                      value={examinerForm.passwordConfirm}
+                      onChange={(e) => setExaminerForm({ ...examinerForm, passwordConfirm: e.target.value })}
+                    />
+                  </>
+                )}
                 <Input
                   label="Téléphone"
                   value={examinerForm.phone}
@@ -2097,15 +2386,15 @@ export const AdminDashboard: React.FC = () => {
                   value={examinerForm.experience}
                   onChange={(e) => setExaminerForm({...examinerForm, experience: e.target.value})}
                 />
-              </div>
-              
-              <div className="flex space-x-3 mt-6">
-                <Button variant="secondary" onClick={closeExaminerModal} className="flex-1">
-                  Annuler
-                </Button>
-                <Button onClick={saveExaminer} className="flex-1">
-                  {modalMode === 'create' ? 'Créer' : 'Sauvegarder'}
-                </Button>
+                
+                <div className="flex space-x-3 mt-6">
+                  <Button variant="secondary" onClick={closeExaminerModal} className="flex-1">
+                    Annuler
+                  </Button>
+                  <Button onClick={saveExaminer} className="flex-1">
+                    {modalMode === 'create' ? 'Créer' : 'Sauvegarder'}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

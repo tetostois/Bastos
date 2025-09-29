@@ -135,6 +135,7 @@ export interface AuthContextType {
   logout: () => void;
   register: (userData: Partial<User>, password: string) => Promise<boolean>;
   isLoading: boolean;
+  getToken: () => string;
 }
 
 export interface ExamSession {

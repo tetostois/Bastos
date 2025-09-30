@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
         // Appels aux seeders applicatifs
         $this->call([
             \Database\Seeders\AdminUserSeeder::class,
+            \Database\Seeders\ActivityTableSeeder::class,
             \Database\Seeders\ExaminerUserSeeder::class,
         ]);
     }

@@ -1,33 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { 
-  Users, 
-  UserCheck, 
-  FileText, 
-  CreditCard, 
-  Award, 
-  TrendingUp, 
-  Search, 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  UserPlus,
-  Mail,
-  Download,
-  Settings,
-  BarChart3,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  X,
-  HelpCircle
-} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { 
+  Users, UserPlus, FileText, Settings, LogOut, CheckCircle, Clock, Search, 
+  Filter, ChevronDown, Plus, Download, Upload, Eye, Edit, Trash2, X, Check, 
+  ChevronLeft, ChevronRight, MoreVertical, Calendar, Clock as ClockIcon, 
+  AlertCircle, BarChart2, CreditCard, File, UserCheck, UserX, Mail, Phone, 
+  Home, MapPin, Hash, Award, BookOpen, Book, BookMarked, BookOpenCheck, 
+  BookKey, BookLock, BookMarkedCheck, BookMarkedX, BookMarkedMinus, 
+  BookMarkedPlus, BookPlus, BookMinus, BookX, BookCheck, BookOpenText, 
+  BookOpenTextIcon, BookTemplate, BookUp, BookDown, BookUp2, BookDown2, HelpCircle
+} from 'lucide-react';
+import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 
 interface User {
   id: string;
@@ -158,6 +145,40 @@ export const AdminDashboard: React.FC = () => {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedExaminer, setSelectedExaminer] = useState<Examiner | null>(null);
+  const [recentActivities, setRecentActivities] = useState<Array<{
+    id: string;
+    type: string;
+    description: string;
+    user: { id: string; name: string; email: string; } | null;
+    data: any;
+    created_at: string;
+    timestamp: string;
+  }>>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+
+  // Charger les activités récentes
+  const loadRecentActivities = async () => {
+    try {
+      setLoadingActivities(true);
+      const response = await fetch(`${API_BASE}/activities/recent?limit=5`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setRecentActivities(result.data);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des activités:', error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  // Charger les activités au montage du composant
+  useEffect(() => {
+    if (activeSection === 'dashboard') {
+      loadRecentActivities();
+    }
+  }, [activeSection]);
 
   // API base and helpers
   const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
@@ -1315,13 +1336,13 @@ export const AdminDashboard: React.FC = () => {
   if (!user || user.role !== 'admin') return null;
 
   const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'examiners', label: 'Examinateurs', icon: UserCheck },
     { id: 'exams', label: 'Examens', icon: FileText },
     { id: 'payments', label: 'Paiements', icon: CreditCard },
     { id: 'certificates', label: 'Certificats', icon: Award },
-    { id: 'analytics', label: 'Analytiques', icon: TrendingUp },
+    { id: 'analytics', label: 'Analytiques', icon: BarChart2 },
     { id: 'settings', label: 'Paramètres', icon: Settings },
     { id: 'exam-questions', label: 'Questions d\'examen', icon: HelpCircle }
   ];
@@ -1396,7 +1417,7 @@ export const AdminDashboard: React.FC = () => {
                 <Card>
                   <div className="flex items-center space-x-4">
                     <div className="p-3 bg-blue-100 rounded-lg">
-                      <Users className="h-6 w-6 text-blue-600" />
+                      <BarChart2 className="h-5 w-5 text-blue-600" />
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Utilisateurs</h3>
@@ -1449,29 +1470,73 @@ export const AdminDashboard: React.FC = () => {
               {/* Recent Activity */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Activité Récente</h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Activité Récente</h3>
+                    <button 
+                      onClick={loadRecentActivities} 
+                      disabled={loadingActivities}
+                      className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                    >
+                      {loadingActivities ? 'Chargement...' : 'Rafraîchir'}
+                    </button>
+                  </div>
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
-                      <UserPlus className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium">Nouvel utilisateur inscrit</p>
-                        <p className="text-xs text-gray-500">Marie Dubois - il y a 2h</p>
+                    {loadingActivities ? (
+                      <div className="flex justify-center p-4">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="text-sm font-medium">Paiement confirmé</p>
-                        <p className="text-xs text-gray-500">Paul Nkomo - il y a 4h</p>
+                    ) : recentActivities.length > 0 ? (
+                      recentActivities.map((activity) => {
+                        // Déterminer l'icône et la couleur en fonction du type d'activité
+                        let icon = null;
+                        let bgColor = 'bg-gray-50';
+                        let iconColor = 'text-gray-600';
+
+                        switch (activity.type) {
+                          case 'user_registered':
+                            icon = <UserPlus className="h-5 w-5" />;
+                            bgColor = 'bg-blue-50';
+                            iconColor = 'text-blue-600';
+                            break;
+                          case 'payment_confirmed':
+                            icon = <CheckCircle className="h-5 w-5" />;
+                            bgColor = 'bg-green-50';
+                            iconColor = 'text-green-600';
+                            break;
+                          case 'exam_submitted':
+                            icon = <FileText className="h-5 w-5" />;
+                            bgColor = 'bg-orange-50';
+                            iconColor = 'text-orange-600';
+                            break;
+                          default:
+                            icon = <Clock className="h-5 w-5" />;
+                            bgColor = 'bg-gray-50';
+                            iconColor = 'text-gray-600';
+                        }
+
+                        return (
+                          <div 
+                            key={activity.id} 
+                            className={`flex items-center space-x-3 p-3 ${bgColor} rounded-lg`}
+                          >
+                            <div className={iconColor}>
+                              {icon}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{activity.description}</p>
+                              <p className="text-xs text-gray-500">
+                                {activity.user ? `${activity.user.name} - ` : ''}
+                                {activity.created_at}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        Aucune activité récente
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg">
-                      <Clock className="h-5 w-5 text-orange-600" />
-                      <div>
-                        <p className="text-sm font-medium">Examen soumis</p>
-                        <p className="text-xs text-gray-500">Jean Kamga - il y a 6h</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </Card>
 

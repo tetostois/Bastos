@@ -10,6 +10,9 @@ use App\Http\Controllers\Api\Admin\ExamController as AdminExamController;
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
+// Activités récentes (publiques ou protégées selon les besoins)
+Route::get('/activities/recent', [\App\Http\Controllers\Api\ActivityController::class, 'recent']);
+
 // Bootstrap: permettre la création du tout premier admin sans auth.
 // La méthode createAdmin elle-même refusera si un admin existe déjà.
 Route::post('/admin/users/create-admin', [AdminUserController::class, 'createAdmin']);

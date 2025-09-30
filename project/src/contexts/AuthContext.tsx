@@ -1,20 +1,29 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { User, AuthContextType } from '../types';
+import { API_BASE_URL } from '../config/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Base URL de l'API Laravel
-const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+// Fonctions de gestion de session
+const getToken = (): string | null => {
+  return localStorage.getItem('token');
+};
 
-const getToken = () => localStorage.getItem('token') || '';
 const setSession = (token: string, user: any) => {
   localStorage.setItem('token', token);
   localStorage.setItem('user', JSON.stringify(user));
+  
+  // Mettre à jour l'en-tête d'autorisation pour les requêtes futures
+  if (token) {
+    // Cette partie sera utilisée par apiRequest
+    // Pas besoin de configurer manuellement les en-têtes ici
+  }
 };
+
 const clearSession = () => {
   localStorage.removeItem('token');
-  localStorage.removeItem('user');
-};
+  localStorage.removeItem('user');};
+
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -47,7 +56,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -69,7 +78,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const token = getToken();
       if (token) {
-        await fetch(`${API_BASE}/auth/logout`, {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -97,7 +106,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         password: password,
         confirmPassword: password
       };
-      const res = await fetch(`${API_BASE}/auth/register`, {
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload)
@@ -141,7 +150,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Optionnel: valider le token et rafraîchir le profil
     const token = getToken();
     if (token) {
-      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.ok ? r.json() : null)
         .then(u => { if (u) {
           const normalized = normalizeUser(u);
@@ -158,7 +167,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     register,
     logout,
     isLoading,
-    getToken,
+    getToken: (): string => getToken() || '',
   };
 
   return (

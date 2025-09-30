@@ -100,12 +100,21 @@ class AuthController extends Controller
         }
 
         $credentials = $validator->validated();
+        
         // Option "remember" ignorée par défaut pour JWT (TTL géré via config)
         unset($credentials['remember']);
 
         if (!$token = auth('api')->attempt($credentials)) {
-            return response()->json(['message' => 'Identifiants invalides'], 401);
+            return response()->json([
+                'message' => 'Email ou mot de passe incorrect',
+            ], 401);
         }
+
+        $user = auth('api')->user();
+        
+        // Mettre à jour la dernière connexion
+        $user->last_login_at = now();
+        $user->save();
 
         return response()->json([
             'message'      => 'Connexion réussie',
@@ -128,9 +137,6 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Déconnexion (invalidation du token)
-     */
     public function logout()
     {
         try {

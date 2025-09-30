@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { 
   Users, 
   UserCheck, 
@@ -643,64 +645,192 @@ export const AdminDashboard: React.FC = () => {
     setSelectedUser(null);
   };
 
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+
   const saveUser = async () => {
+    setError(null);
+    setFieldErrors({});
+    
     try {
+      // Validation côté client
+      const errors: Record<string, string[]> = {};
+      
+      if (!userForm.firstName) errors.firstName = ['Le prénom est obligatoire'];
+      if (!userForm.lastName) errors.lastName = ['Le nom est obligatoire'];
+      
+      if (!userForm.email) {
+        errors.email = ['L\'email est obligatoire'];
+      } else if (!/\S+@\S+\.\S+/.test(userForm.email)) {
+        errors.email = ['Format d\'email invalide'];
+      }
+      
+      if (!userForm.phone) {
+        errors.phone = ['Le téléphone est obligatoire'];
+      }
+      
       if (modalMode === 'create') {
-        if (!userForm.password || userForm.password !== userForm.passwordConfirm || userForm.password.length < 6) {
-          console.error('Mot de passe invalide ou confirmation non correspondante (min 6 caractères)');
-          return;
+        if (!userForm.password) {
+          errors.password = ['Le mot de passe est obligatoire'];
+        } else if (userForm.password.length < 6) {
+          errors.password = ['Le mot de passe doit contenir au moins 6 caractères'];
         }
-        // Optionnel: créer un admin si on a un flux UI pour ça
-        const payload = {
-          first_name: userForm.firstName,
-          last_name: userForm.lastName,
-          email: userForm.email,
-          phone: userForm.phone,
-          profession: userForm.profession || undefined,
-          password: userForm.password,
-          password_confirmation: userForm.passwordConfirm,
-        };
-        const res = await fetch(`${API_BASE}/admin/users/create-admin`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          console.error('Erreur création admin');
-        }
-      } else if (modalMode === 'edit' && selectedUser) {
-        const payload: any = {
-          first_name: userForm.firstName,
-          last_name: userForm.lastName,
-          email: userForm.email,
-          phone: userForm.phone,
-          profession: userForm.profession || undefined,
-        };
-        const res = await fetch(`${API_BASE}/admin/users/${selectedUser.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          console.error('Erreur mise à jour utilisateur');
+        
+        if (userForm.password !== userForm.passwordConfirm) {
+          errors.passwordConfirm = ['Les mots de passe ne correspondent pas'];
         }
       }
-      await loadUsers();
-    } finally {
-      closeUserModal();
+      
+      // Si erreurs de validation côté client
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Veuillez corriger les erreurs dans le formulaire');
+        return;
+      }
+
+      // Préparation du payload
+      const payload: Record<string, any> = {
+        first_name: userForm.firstName,
+        last_name: userForm.lastName,
+        email: userForm.email,
+        phone: userForm.phone,
+        role: 'admin', // Toujours définir le rôle comme admin pour ce formulaire
+      };
+
+      // Ajouter les champs optionnels s'ils ont une valeur
+      if (userForm.profession) {
+        payload.profession = userForm.profession;
+      }
+
+      // Ajout des champs spécifiques à la création
+      if (modalMode === 'create') {
+        payload.password = userForm.password;
+        payload.password_confirmation = userForm.passwordConfirm;
+        
+        const res = await fetch(`${API_BASE}/admin/users/create-admin`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            // Gestion des erreurs de validation du serveur
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              // Convertir les clés du backend (snake_case) en camelCase pour le frontend
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la création de l\'administrateur');
+        }
+
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeUserModal();
+        toast.success('Administrateur créé avec succès');
+      } else if (modalMode === 'edit' && selectedUser) {
+        const res = await fetch(`${API_BASE}/admin/users/${selectedUser.id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la mise à jour de l\'utilisateur');
+        }
+
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeUserModal();
+        toast.success('Utilisateur mis à jour avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la communication avec le serveur';
+      setError(errorMessage);
+      // Ne pas fermer le modal en cas d'erreur
     }
   };
 
   const deleteUser = async (userId: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
-    const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${getToken()}` }
-    });
-    if (!res.ok) {
-      console.error('Suppression impossible (liens existants ?)');
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.')) {
+      return;
     }
-    await loadUsers();
+    
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Erreur lors de la suppression de l\'utilisateur');
+      }
+      
+      // Recharger la liste des utilisateurs après la suppression
+      await loadUsers();
+      
+      // Afficher un message de succès
+      if (typeof toast !== 'undefined') {
+        toast.success('Utilisateur supprimé avec succès');
+      } else {
+        alert('Utilisateur supprimé avec succès');
+      }
+      
+    } catch (error) {
+      console.error('Erreur lors de la suppression de l\'utilisateur :', error);
+      let errorMessage = 'Une erreur est survenue lors de la suppression';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String(error.message);
+      }
+      
+      // Vérifier si c'est une erreur de violation de clé étrangère
+      if (errorMessage.includes('foreign key constraint')) {
+        errorMessage = 'Impossible de supprimer cet utilisateur car il est lié à d\'autres données dans le système.';
+      }
+      
+      if (typeof toast !== 'undefined') {
+        toast.error(errorMessage);
+      } else {
+        alert(`Erreur : ${errorMessage}`);
+      }
+    }
   };
 
   const toggleUserStatus = async (userId: string) => {
@@ -750,59 +880,171 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const saveExaminer = async () => {
+    setError(null);
+    setFieldErrors({});
+    
     try {
+      // Validation côté client
+      const errors: Record<string, string[]> = {};
+      
+      if (!examinerForm.firstName) errors.firstName = ['Le prénom est obligatoire'];
+      if (!examinerForm.lastName) errors.lastName = ['Le nom est obligatoire'];
+      
+      if (!examinerForm.email) {
+        errors.email = ['L\'email est obligatoire'];
+      } else if (!/\S+@\S+\.\S+/.test(examinerForm.email)) {
+        errors.email = ['Format d\'email invalide'];
+      }
+      
+      if (!examinerForm.phone) {
+        errors.phone = ['Le téléphone est obligatoire'];
+      }
+      
       if (modalMode === 'create') {
-        if (!examinerForm.password || examinerForm.password !== examinerForm.passwordConfirm || examinerForm.password.length < 6) {
-          console.error('Mot de passe examinateur invalide ou confirmation non correspondante (min 6 caractères)');
-          return;
+        if (!examinerForm.password) {
+          errors.password = ['Le mot de passe est obligatoire'];
+        } else if (examinerForm.password.length < 6) {
+          errors.password = ['Le mot de passe doit contenir au moins 6 caractères'];
         }
+        
+        if (examinerForm.password !== examinerForm.passwordConfirm) {
+          errors.passwordConfirm = ['Les mots de passe ne correspondent pas'];
+        }
+      }
+      
+      // Si erreurs de validation côté client
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Veuillez corriger les erreurs dans le formulaire');
+        return;
+      }
+      
+      if (modalMode === 'create') {
         const payload = {
-          first_name: examinerForm.firstName,
-          last_name: examinerForm.lastName,
-          email: examinerForm.email,
-          phone: examinerForm.phone,
-          specialization: examinerForm.specialization,
-          experience: examinerForm.experience || undefined,
-          password: examinerForm.password,
-          password_confirmation: examinerForm.passwordConfirm
-        };
-        const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) console.error('Erreur création examinateur');
-      } else if (modalMode === 'edit' && selectedExaminer) {
-        const payload: any = {
           first_name: examinerForm.firstName,
           last_name: examinerForm.lastName,
           email: examinerForm.email,
           phone: examinerForm.phone,
           specialization: examinerForm.specialization || undefined,
           experience: examinerForm.experience || undefined,
+          password: examinerForm.password,
+          password_confirmation: examinerForm.passwordConfirm,
+          role: 'examiner'
         };
-        const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        
+        const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
           body: JSON.stringify(payload)
         });
-        if (!res.ok) console.error('Erreur mise à jour examinateur');
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            // Gestion des erreurs de validation du serveur
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              // Convertir les clés du backend (snake_case) en camelCase pour le frontend
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la création de l\'examinateur');
+        }
+        
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeExaminerModal();
+        toast.success('Examinateur créé avec succès');
+      } else if (modalMode === 'edit' && selectedExaminer) {
+        const payload = {
+          first_name: examinerForm.firstName,
+          last_name: examinerForm.lastName,
+          email: examinerForm.email,
+          phone: examinerForm.phone,
+          specialization: examinerForm.specialization || undefined,
+          experience: examinerForm.experience || undefined
+        };
+        
+        const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la mise à jour de l\'examinateur');
+        }
+        
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeExaminerModal();
+        toast.success('Examinateur mis à jour avec succès');
       }
-      await loadUsers();
-    } finally {
-      closeExaminerModal();
+    } catch (error) {
+      console.error('Erreur:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la communication avec le serveur';
+      setError(errorMessage);
     }
   };
 
   const toggleExaminerStatus = async (examinerId: string) => {
-    const current = users.find(u => u.id === examinerId);
-    const is_active = current ? !current.isActive : true;
-    await fetch(`${API_BASE}/admin/users/${examinerId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify({ is_active })
-    });
-    await loadUsers();
+    try {
+      const current = users.find(u => u.id === examinerId);
+      if (!current) {
+        console.error('Examinateur non trouvé');
+        return;
+      }
+      
+      const isActive = !current.isActive;
+      const res = await fetch(`${API_BASE}/admin/users/${examinerId}/status`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ is_active: isActive })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || data.error || 'Erreur lors de la mise à jour du statut');
+      }
+      
+      // Recharger la liste des utilisateurs
+      await loadUsers();
+      toast.success(`Examinateur ${isActive ? 'activé' : 'désactivé'} avec succès`);
+    } catch (error) {
+      console.error('Erreur lors du changement de statut:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
   const sendEmailToExaminer = (examiner: Examiner) => {
@@ -1085,7 +1327,19 @@ export const AdminDashboard: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <>
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
+      <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <div className="w-64 bg-gray-900 text-white flex-shrink-0">
         <div className="p-6">
@@ -2400,6 +2654,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };

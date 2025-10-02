@@ -14,18 +14,30 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // Créer un administrateur
+        // Créer l'administrateur principal
         User::create([
             'first_name' => 'Admin',
-            'last_name' => 'Admin',
-            'email' => 'admin@example.com',
-            'password' => Hash::make('password'),
+            'last_name' => 'Système',
+            'email' => 'admin@gmail.com',
+            'password' => Hash::make('admin123'),
             'role' => 'admin',
             'is_active' => true,
         ]);
 
-        // Créer des examinateurs
-        for ($i = 1; $i <= 5; $i++) {
+        // Créer l'examinateur principal
+        User::create([
+            'first_name' => 'Examinateur',
+            'last_name' => 'Principal',
+            'email' => 'examiner@gmail.com',
+            'password' => Hash::make('examiner123'),
+            'role' => 'examiner',
+            'is_active' => true,
+            'specialization' => 'Évaluation des compétences',
+            'experience_years' => 5,
+        ]);
+
+        // Créer des examinateurs supplémentaires
+        for ($i = 1; $i <= 3; $i++) {
             User::create([
                 'first_name' => 'Examinateur',
                 'last_name' => $i,

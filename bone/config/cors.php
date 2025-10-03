@@ -31,7 +31,7 @@ return [
 
     'max_age' => 0,
 
-    // No credentials (cookies) for JWT by default
-    'supports_credentials' => false,
+    // Autoriser les credentials pour JWT
+    'supports_credentials' => true,
 
 ];

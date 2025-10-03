@@ -1,0 +1,31 @@
+import { User } from '../entities/user.entity';
+export declare class UserResponseDto {
+    id: string;
+    email: string;
+    examinerId?: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    address?: string;
+    birthDate?: Date;
+    birthPlace?: string;
+    city?: string;
+    country: string;
+    profession?: string;
+    role: string;
+    specialization?: string;
+    experience?: string;
+    isActive: boolean;
+    emailVerified: boolean;
+    hasPaid?: boolean;
+    examTaken?: boolean;
+    score?: number;
+    certificate?: string;
+    selectedCertification?: string;
+    completedModules?: string[];
+    currentModule?: string;
+    examStartDate?: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    constructor(user: User);
+}

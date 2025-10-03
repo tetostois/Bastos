@@ -1,8 +1,14 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, AuthContextType } from '../types';
 import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL } from '../config/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Fonctions de gestion de session
+const getToken = (): string | null => {
+  return localStorage.getItem('token');
+};
 
 // Fonctions de gestion de session
 const getToken = (): string | null => {
@@ -18,11 +24,31 @@ const setSession = (token: string, user: any) => {
     // Cette partie sera utilisée par apiRequest
     // Pas besoin de configurer manuellement les en-têtes ici
   }
+  
+  // Mettre à jour l'en-tête d'autorisation pour les requêtes futures
+  if (token) {
+    // Cette partie sera utilisée par apiRequest
+    // Pas besoin de configurer manuellement les en-têtes ici
+  }
 };
+
 
 const clearSession = () => {
   localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  localStorage.removeItem('user');};
+
+// Vérifier si l'utilisateur est authentifié
+const isAuthenticated = (): boolean => {
+  const token = getToken();
+  if (!token) return false;
+  
+  // Vérifier si le token est expiré (optionnel)
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch (e) {
+    return false;
+  }
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {

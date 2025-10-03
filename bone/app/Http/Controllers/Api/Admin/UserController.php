@@ -26,38 +26,75 @@ class UserController extends Controller
      */
     public function createAdmin(Request $request)
     {
-        // Autoriser la création du tout premier admin sans rôle admin (bootstrap)
+        // Validation des données d'entrée
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:100',
+            'last_name'  => 'required|string|max:100',
+            'email'      => 'required|string|email|max:255|unique:users,email',
+            'phone'      => 'required|string|max:30|unique:users,phone',
+            'profession' => 'nullable|string|max:100',
+            'password'   => 'required|string|min:6|confirmed',
+        ], [
+            'email.unique' => 'Cette adresse email est déjà utilisée',
+            'phone.unique' => 'Ce numéro de téléphone est déjà utilisé',
+            'password.confirmed' => 'La confirmation du mot de passe ne correspond pas',
+            'password.min' => 'Le mot de passe doit contenir au moins 6 caractères'
+        ]);
+
+        // Vérification des erreurs de validation
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Vérifier les droits admin uniquement si un admin existe déjà
         $hasAdmin = User::where('role', User::ROLE_ADMIN)->exists();
         if ($hasAdmin) {
             $this->ensureAdmin();
         }
 
-        $validator = Validator::make($request->all(), [
-            'first_name' => 'required|string|max:100',
-            'last_name'  => 'required|string|max:100',
-            'email'      => 'required|string|email|max:255|unique:users,email',
-            'phone'      => 'required|string|max:30',
-            'profession' => 'nullable|string|max:100',
-            'password'   => 'required|string|min:6|confirmed',
-        ]);
+        try {
+            $data = $validator->validated();
+            
+            // Vérifier si l'email existe déjà (double vérification)
+            if (User::where('email', $data['email'])->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cette adresse email est déjà utilisée',
+                    'errors' => ['email' => ['Cette adresse email est déjà utilisée']]
+                ], 422);
+            }
 
-        if ($validator->fails()) {
-            return response()->json(['message' => 'Validation échouée', 'errors' => $validator->errors()], 422);
+            // Création de l'administrateur
+            $admin = User::create([
+                'first_name' => $data['first_name'],
+                'last_name'  => $data['last_name'],
+                'email'      => $data['email'],
+                'phone'      => $data['phone'],
+                'profession' => $data['profession'] ?? null,
+                'password'   => Hash::make($data['password']),
+                'role'       => User::ROLE_ADMIN,
+                'is_active'  => true,
+                'email_verified_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Administrateur créé avec succès',
+                'user' => $admin
+            ], 201);
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur création admin: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur est survenue lors de la création de l\'administrateur',
+                'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
         }
-
-        $data = $validator->validated();
-        $admin = User::create([
-            'first_name' => $data['first_name'],
-            'last_name'  => $data['last_name'],
-            'email'      => $data['email'],
-            'phone'      => $data['phone'],
-            'profession' => $data['profession'] ?? null,
-            'password'   => Hash::make($request->password),
-            'role'       => User::ROLE_ADMIN,
-            'is_active'  => true,
-        ]);
-
-        return response()->json(['message' => 'Administrateur créé', 'user' => $admin], 201);
     }
 
     /**

@@ -103,6 +103,11 @@ export interface ExamSubmission {
 export interface Answer {
   questionId: string;
   value: string | number;
+  comment?: string;
+  pointsAwarded?: number;
+  isCorrect?: boolean;
+  correctedBy?: string;
+  correctedAt?: string;
 }
 
 export interface Payment {

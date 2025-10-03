@@ -22,20 +22,7 @@ const setSession = (token: string, user: any) => {
 
 const clearSession = () => {
   localStorage.removeItem('token');
-  localStorage.removeItem('user');};
-
-// Vérifier si l'utilisateur est authentifié
-const isAuthenticated = (): boolean => {
-  const token = getToken();
-  if (!token) return false;
-  
-  // Vérifier si le token est expiré (optionnel)
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.exp * 1000 > Date.now();
-  } catch (e) {
-    return false;
-  }
+  localStorage.removeItem('user');
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -69,7 +56,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -91,7 +78,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const token = getToken();
       if (token) {
-        await fetch(`${API_BASE}/auth/logout`, {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -119,7 +106,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         password: password,
         confirmPassword: password
       };
-      const res = await fetch(`${API_BASE}/auth/register`, {
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload)
@@ -163,7 +150,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Optionnel: valider le token et rafraîchir le profil
     const token = getToken();
     if (token) {
-      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.ok ? r.json() : null)
         .then(u => { if (u) {
           const normalized = normalizeUser(u);
@@ -180,7 +167,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     register,
     logout,
     isLoading,
-    getToken,
+    getToken: (): string => getToken() || '',
   };
 
   return (

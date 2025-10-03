@@ -1,31 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Users, 
-  UserCheck, 
-  FileText, 
-  CreditCard, 
-  Award, 
-  TrendingUp, 
-  Search, 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  UserPlus,
-  Mail,
-  Download,
-  Settings,
-  BarChart3,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  X,
-  HelpCircle
-} from 'lucide-react';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { useAuth } from '../contexts/AuthContext';
+import { 
+  Users, UserPlus, FileText, Settings, LogOut, CheckCircle, Clock, Search, 
+  Filter, ChevronDown, Plus, Download, Upload, Eye, Edit, Trash2, X, Check, 
+  ChevronLeft, ChevronRight, MoreVertical, Calendar, Clock as ClockIcon, 
+  AlertCircle, BarChart2, CreditCard, File, UserCheck, UserX, Mail, Phone, 
+  Home, MapPin, Hash, Award, BookOpen, Book, BookMarked, BookOpenCheck, 
+  BookKey, BookLock, BookMarkedCheck, BookMarkedX, BookMarkedMinus, 
+  BookMarkedPlus, BookPlus, BookMinus, BookX, BookCheck, BookOpenText, 
+  BookOpenTextIcon, BookTemplate, BookUp, BookDown, BookUp2, BookDown2, HelpCircle
+} from 'lucide-react';
+import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 
 interface User {
   id: string;
@@ -156,6 +145,40 @@ export const AdminDashboard: React.FC = () => {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedExaminer, setSelectedExaminer] = useState<Examiner | null>(null);
+  const [recentActivities, setRecentActivities] = useState<Array<{
+    id: string;
+    type: string;
+    description: string;
+    user: { id: string; name: string; email: string; } | null;
+    data: any;
+    created_at: string;
+    timestamp: string;
+  }>>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+
+  // Charger les activités récentes
+  const loadRecentActivities = async () => {
+    try {
+      setLoadingActivities(true);
+      const response = await fetch(`${API_BASE}/activities/recent?limit=5`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setRecentActivities(result.data);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des activités:', error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  // Charger les activités au montage du composant
+  useEffect(() => {
+    if (activeSection === 'dashboard') {
+      loadRecentActivities();
+    }
+  }, [activeSection]);
 
   // API base and helpers
   const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
@@ -643,64 +666,192 @@ export const AdminDashboard: React.FC = () => {
     setSelectedUser(null);
   };
 
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+
   const saveUser = async () => {
+    setError(null);
+    setFieldErrors({});
+    
     try {
+      // Validation côté client
+      const errors: Record<string, string[]> = {};
+      
+      if (!userForm.firstName) errors.firstName = ['Le prénom est obligatoire'];
+      if (!userForm.lastName) errors.lastName = ['Le nom est obligatoire'];
+      
+      if (!userForm.email) {
+        errors.email = ['L\'email est obligatoire'];
+      } else if (!/\S+@\S+\.\S+/.test(userForm.email)) {
+        errors.email = ['Format d\'email invalide'];
+      }
+      
+      if (!userForm.phone) {
+        errors.phone = ['Le téléphone est obligatoire'];
+      }
+      
       if (modalMode === 'create') {
-        if (!userForm.password || userForm.password !== userForm.passwordConfirm || userForm.password.length < 6) {
-          console.error('Mot de passe invalide ou confirmation non correspondante (min 6 caractères)');
-          return;
+        if (!userForm.password) {
+          errors.password = ['Le mot de passe est obligatoire'];
+        } else if (userForm.password.length < 6) {
+          errors.password = ['Le mot de passe doit contenir au moins 6 caractères'];
         }
-        // Optionnel: créer un admin si on a un flux UI pour ça
-        const payload = {
-          first_name: userForm.firstName,
-          last_name: userForm.lastName,
-          email: userForm.email,
-          phone: userForm.phone,
-          profession: userForm.profession || undefined,
-          password: userForm.password,
-          password_confirmation: userForm.passwordConfirm,
-        };
-        const res = await fetch(`${API_BASE}/admin/users/create-admin`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          console.error('Erreur création admin');
-        }
-      } else if (modalMode === 'edit' && selectedUser) {
-        const payload: any = {
-          first_name: userForm.firstName,
-          last_name: userForm.lastName,
-          email: userForm.email,
-          phone: userForm.phone,
-          profession: userForm.profession || undefined,
-        };
-        const res = await fetch(`${API_BASE}/admin/users/${selectedUser.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          console.error('Erreur mise à jour utilisateur');
+        
+        if (userForm.password !== userForm.passwordConfirm) {
+          errors.passwordConfirm = ['Les mots de passe ne correspondent pas'];
         }
       }
-      await loadUsers();
-    } finally {
-      closeUserModal();
+      
+      // Si erreurs de validation côté client
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Veuillez corriger les erreurs dans le formulaire');
+        return;
+      }
+
+      // Préparation du payload
+      const payload: Record<string, any> = {
+        first_name: userForm.firstName,
+        last_name: userForm.lastName,
+        email: userForm.email,
+        phone: userForm.phone,
+        role: 'admin', // Toujours définir le rôle comme admin pour ce formulaire
+      };
+
+      // Ajouter les champs optionnels s'ils ont une valeur
+      if (userForm.profession) {
+        payload.profession = userForm.profession;
+      }
+
+      // Ajout des champs spécifiques à la création
+      if (modalMode === 'create') {
+        payload.password = userForm.password;
+        payload.password_confirmation = userForm.passwordConfirm;
+        
+        const res = await fetch(`${API_BASE}/admin/users/create-admin`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            // Gestion des erreurs de validation du serveur
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              // Convertir les clés du backend (snake_case) en camelCase pour le frontend
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la création de l\'administrateur');
+        }
+
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeUserModal();
+        toast.success('Administrateur créé avec succès');
+      } else if (modalMode === 'edit' && selectedUser) {
+        const res = await fetch(`${API_BASE}/admin/users/${selectedUser.id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la mise à jour de l\'utilisateur');
+        }
+
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeUserModal();
+        toast.success('Utilisateur mis à jour avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la communication avec le serveur';
+      setError(errorMessage);
+      // Ne pas fermer le modal en cas d'erreur
     }
   };
 
   const deleteUser = async (userId: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
-    const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${getToken()}` }
-    });
-    if (!res.ok) {
-      console.error('Suppression impossible (liens existants ?)');
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.')) {
+      return;
     }
-    await loadUsers();
+    
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Erreur lors de la suppression de l\'utilisateur');
+      }
+      
+      // Recharger la liste des utilisateurs après la suppression
+      await loadUsers();
+      
+      // Afficher un message de succès
+      if (typeof toast !== 'undefined') {
+        toast.success('Utilisateur supprimé avec succès');
+      } else {
+        alert('Utilisateur supprimé avec succès');
+      }
+      
+    } catch (error) {
+      console.error('Erreur lors de la suppression de l\'utilisateur :', error);
+      let errorMessage = 'Une erreur est survenue lors de la suppression';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String(error.message);
+      }
+      
+      // Vérifier si c'est une erreur de violation de clé étrangère
+      if (errorMessage.includes('foreign key constraint')) {
+        errorMessage = 'Impossible de supprimer cet utilisateur car il est lié à d\'autres données dans le système.';
+      }
+      
+      if (typeof toast !== 'undefined') {
+        toast.error(errorMessage);
+      } else {
+        alert(`Erreur : ${errorMessage}`);
+      }
+    }
   };
 
   const toggleUserStatus = async (userId: string) => {
@@ -750,59 +901,171 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const saveExaminer = async () => {
+    setError(null);
+    setFieldErrors({});
+    
     try {
+      // Validation côté client
+      const errors: Record<string, string[]> = {};
+      
+      if (!examinerForm.firstName) errors.firstName = ['Le prénom est obligatoire'];
+      if (!examinerForm.lastName) errors.lastName = ['Le nom est obligatoire'];
+      
+      if (!examinerForm.email) {
+        errors.email = ['L\'email est obligatoire'];
+      } else if (!/\S+@\S+\.\S+/.test(examinerForm.email)) {
+        errors.email = ['Format d\'email invalide'];
+      }
+      
+      if (!examinerForm.phone) {
+        errors.phone = ['Le téléphone est obligatoire'];
+      }
+      
       if (modalMode === 'create') {
-        if (!examinerForm.password || examinerForm.password !== examinerForm.passwordConfirm || examinerForm.password.length < 6) {
-          console.error('Mot de passe examinateur invalide ou confirmation non correspondante (min 6 caractères)');
-          return;
+        if (!examinerForm.password) {
+          errors.password = ['Le mot de passe est obligatoire'];
+        } else if (examinerForm.password.length < 6) {
+          errors.password = ['Le mot de passe doit contenir au moins 6 caractères'];
         }
+        
+        if (examinerForm.password !== examinerForm.passwordConfirm) {
+          errors.passwordConfirm = ['Les mots de passe ne correspondent pas'];
+        }
+      }
+      
+      // Si erreurs de validation côté client
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Veuillez corriger les erreurs dans le formulaire');
+        return;
+      }
+      
+      if (modalMode === 'create') {
         const payload = {
-          first_name: examinerForm.firstName,
-          last_name: examinerForm.lastName,
-          email: examinerForm.email,
-          phone: examinerForm.phone,
-          specialization: examinerForm.specialization,
-          experience: examinerForm.experience || undefined,
-          password: examinerForm.password,
-          password_confirmation: examinerForm.passwordConfirm
-        };
-        const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) console.error('Erreur création examinateur');
-      } else if (modalMode === 'edit' && selectedExaminer) {
-        const payload: any = {
           first_name: examinerForm.firstName,
           last_name: examinerForm.lastName,
           email: examinerForm.email,
           phone: examinerForm.phone,
           specialization: examinerForm.specialization || undefined,
           experience: examinerForm.experience || undefined,
+          password: examinerForm.password,
+          password_confirmation: examinerForm.passwordConfirm,
+          role: 'examiner'
         };
-        const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        
+        const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
           body: JSON.stringify(payload)
         });
-        if (!res.ok) console.error('Erreur mise à jour examinateur');
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            // Gestion des erreurs de validation du serveur
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              // Convertir les clés du backend (snake_case) en camelCase pour le frontend
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la création de l\'examinateur');
+        }
+        
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeExaminerModal();
+        toast.success('Examinateur créé avec succès');
+      } else if (modalMode === 'edit' && selectedExaminer) {
+        const payload = {
+          first_name: examinerForm.firstName,
+          last_name: examinerForm.lastName,
+          email: examinerForm.email,
+          phone: examinerForm.phone,
+          specialization: examinerForm.specialization || undefined,
+          experience: examinerForm.experience || undefined
+        };
+        
+        const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${getToken()}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          if (res.status === 422 && data.errors) {
+            const serverErrors: Record<string, string[]> = {};
+            Object.keys(data.errors).forEach(key => {
+              const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+              serverErrors[camelKey] = data.errors[key];
+            });
+            setFieldErrors(serverErrors);
+            setError('Veuillez corriger les erreurs dans le formulaire');
+            return;
+          }
+          throw new Error(data.message || data.error || 'Erreur lors de la mise à jour de l\'examinateur');
+        }
+        
+        // Si succès, recharger la liste et fermer le modal
+        await loadUsers();
+        closeExaminerModal();
+        toast.success('Examinateur mis à jour avec succès');
       }
-      await loadUsers();
-    } finally {
-      closeExaminerModal();
+    } catch (error) {
+      console.error('Erreur:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors de la communication avec le serveur';
+      setError(errorMessage);
     }
   };
 
   const toggleExaminerStatus = async (examinerId: string) => {
-    const current = users.find(u => u.id === examinerId);
-    const is_active = current ? !current.isActive : true;
-    await fetch(`${API_BASE}/admin/users/${examinerId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-      body: JSON.stringify({ is_active })
-    });
-    await loadUsers();
+    try {
+      const current = users.find(u => u.id === examinerId);
+      if (!current) {
+        console.error('Examinateur non trouvé');
+        return;
+      }
+      
+      const isActive = !current.isActive;
+      const res = await fetch(`${API_BASE}/admin/users/${examinerId}/status`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ is_active: isActive })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || data.error || 'Erreur lors de la mise à jour du statut');
+      }
+      
+      // Recharger la liste des utilisateurs
+      await loadUsers();
+      toast.success(`Examinateur ${isActive ? 'activé' : 'désactivé'} avec succès`);
+    } catch (error) {
+      console.error('Erreur lors du changement de statut:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
   const sendEmailToExaminer = (examiner: Examiner) => {
@@ -1073,19 +1336,31 @@ export const AdminDashboard: React.FC = () => {
   if (!user || user.role !== 'admin') return null;
 
   const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'examiners', label: 'Examinateurs', icon: UserCheck },
     { id: 'exams', label: 'Examens', icon: FileText },
     { id: 'payments', label: 'Paiements', icon: CreditCard },
     { id: 'certificates', label: 'Certificats', icon: Award },
-    { id: 'analytics', label: 'Analytiques', icon: TrendingUp },
+    { id: 'analytics', label: 'Analytiques', icon: BarChart2 },
     { id: 'settings', label: 'Paramètres', icon: Settings },
     { id: 'exam-questions', label: 'Questions d\'examen', icon: HelpCircle }
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <>
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
+      <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <div className="w-64 bg-gray-900 text-white flex-shrink-0">
         <div className="p-6">
@@ -1142,7 +1417,7 @@ export const AdminDashboard: React.FC = () => {
                 <Card>
                   <div className="flex items-center space-x-4">
                     <div className="p-3 bg-blue-100 rounded-lg">
-                      <Users className="h-6 w-6 text-blue-600" />
+                      <BarChart2 className="h-5 w-5 text-blue-600" />
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Utilisateurs</h3>
@@ -1195,29 +1470,73 @@ export const AdminDashboard: React.FC = () => {
               {/* Recent Activity */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Activité Récente</h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Activité Récente</h3>
+                    <button 
+                      onClick={loadRecentActivities} 
+                      disabled={loadingActivities}
+                      className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                    >
+                      {loadingActivities ? 'Chargement...' : 'Rafraîchir'}
+                    </button>
+                  </div>
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
-                      <UserPlus className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium">Nouvel utilisateur inscrit</p>
-                        <p className="text-xs text-gray-500">Marie Dubois - il y a 2h</p>
+                    {loadingActivities ? (
+                      <div className="flex justify-center p-4">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="text-sm font-medium">Paiement confirmé</p>
-                        <p className="text-xs text-gray-500">Paul Nkomo - il y a 4h</p>
+                    ) : recentActivities.length > 0 ? (
+                      recentActivities.map((activity) => {
+                        // Déterminer l'icône et la couleur en fonction du type d'activité
+                        let icon = null;
+                        let bgColor = 'bg-gray-50';
+                        let iconColor = 'text-gray-600';
+
+                        switch (activity.type) {
+                          case 'user_registered':
+                            icon = <UserPlus className="h-5 w-5" />;
+                            bgColor = 'bg-blue-50';
+                            iconColor = 'text-blue-600';
+                            break;
+                          case 'payment_confirmed':
+                            icon = <CheckCircle className="h-5 w-5" />;
+                            bgColor = 'bg-green-50';
+                            iconColor = 'text-green-600';
+                            break;
+                          case 'exam_submitted':
+                            icon = <FileText className="h-5 w-5" />;
+                            bgColor = 'bg-orange-50';
+                            iconColor = 'text-orange-600';
+                            break;
+                          default:
+                            icon = <Clock className="h-5 w-5" />;
+                            bgColor = 'bg-gray-50';
+                            iconColor = 'text-gray-600';
+                        }
+
+                        return (
+                          <div 
+                            key={activity.id} 
+                            className={`flex items-center space-x-3 p-3 ${bgColor} rounded-lg`}
+                          >
+                            <div className={iconColor}>
+                              {icon}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{activity.description}</p>
+                              <p className="text-xs text-gray-500">
+                                {activity.user ? `${activity.user.name} - ` : ''}
+                                {activity.created_at}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center p-4 text-gray-500">
+                        Aucune activité récente
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg">
-                      <Clock className="h-5 w-5 text-orange-600" />
-                      <div>
-                        <p className="text-sm font-medium">Examen soumis</p>
-                        <p className="text-xs text-gray-500">Jean Kamga - il y a 6h</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </Card>
 
@@ -2400,6 +2719,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };

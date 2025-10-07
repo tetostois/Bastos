@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, AuthContextType } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -12,7 +12,7 @@ const getToken = (): string | null => {
 const setSession = (token: string, user: any) => {
   localStorage.setItem('token', token);
   localStorage.setItem('user', JSON.stringify(user));
-  
+
   // Mettre à jour l'en-tête d'autorisation pour les requêtes futures
   if (token) {
     // Cette partie sera utilisée par apiRequest
@@ -22,8 +22,8 @@ const setSession = (token: string, user: any) => {
 
 const clearSession = () => {
   localStorage.removeItem('token');
-  localStorage.removeItem('user');};
-
+  localStorage.removeItem('user');
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);

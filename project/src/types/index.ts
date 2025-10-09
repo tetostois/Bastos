@@ -25,18 +25,6 @@ export interface User {
   experience?: string;
 }
 
-export interface CertificationType {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  pricePerModule?: number;
-  targetAudience: string;
-  objective: string;
-  color: string;
-  modules: CertificationModule[];
-  isActive: boolean;
-}
 
 export interface CertificationModule {
   id: string;

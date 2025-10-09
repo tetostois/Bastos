@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { User, AuthContextType } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -32,13 +32,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Normalise les champs utilisateur du backend (snake_case) vers camelCase
   const normalizeUser = (raw: any): User => {
     if (!raw) return null as unknown as User;
+    // role can be a string or an object like { roleName, ... }
+    let roleVal: string = 'candidate';
+    if (typeof raw.role === 'string') {
+      roleVal = raw.role;
+    } else if (raw.role && typeof raw.role === 'object') {
+      roleVal = raw.role.roleName ?? raw.role.name ?? String(raw.role?.id ?? 'candidate');
+    } else if (raw.role) {
+      roleVal = String(raw.role);
+    }
+
     return {
       id: String(raw.id ?? raw.uuid ?? ''),
       firstName: raw.firstName ?? raw.first_name ?? '',
       lastName: raw.lastName ?? raw.last_name ?? '',
       email: raw.email ?? '',
       phone: raw.phone ?? '',
-      role: (raw.role ?? 'candidate') as User['role'],
+      role: (roleVal ?? 'candidate') as User['role'],
       isActive: Boolean(raw.isActive ?? raw.is_active ?? true),
       address: raw.address ?? '',
       birthDate: raw.birthDate ?? raw.date_of_birth ?? '',
@@ -151,13 +161,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const token = getToken();
     if (token) {
       fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null)
+        .then(r => {
+          if (!r.ok) {
+            console.error('[Auth] /auth/me returned', r.status, r.statusText);
+            return null;
+          }
+          return r.json();
+        })
         .then(u => { if (u) {
           const normalized = normalizeUser(u);
           setUser(normalized);
           localStorage.setItem('user', JSON.stringify(normalized));
         } })
-        .catch(() => {});
+        .catch(err => {
+          console.error('[Auth] Error fetching /auth/me', err);
+        });
     }
   }, []);
 

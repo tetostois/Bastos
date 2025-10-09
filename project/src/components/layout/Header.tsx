@@ -9,6 +9,12 @@ export const Header: React.FC = () => {
 
   if (!user) return null;
 
+  // user.role may be either a string or an object like { roleName, ... }.
+  // Cast to any to allow runtime detection (the User type is a union of string literals,
+  // so TypeScript would otherwise consider the object branch unreachable).
+  const rawRole = (user as any).role;
+  const roleName = typeof rawRole === 'string' ? rawRole : (rawRole?.roleName ?? rawRole?.name ?? '');
+
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'admin': return 'bg-purple-100 text-purple-800';
@@ -54,8 +60,8 @@ export const Header: React.FC = () => {
                   {user.firstName} {user.lastName}
                 </span>
               </div>
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRoleColor(user.role)}`}>
-                {getRoleLabel(user.role)}
+                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRoleColor(roleName)}`}>
+                {getRoleLabel(roleName)}
               </span>
             </div>
 

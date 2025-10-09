@@ -20,7 +20,7 @@ interface RegisterRequest extends Omit<User, 'id' | 'createdAt' | 'isActive' | '
 
 interface AuthResponse {
   user: User;
-  token: string;
+  token: string; // compat front
 }
 
 // Ajout des utilisateurs de test par défaut
@@ -156,9 +156,10 @@ const mockAuth = {
 // Fonctions d'authentification réelles
 const realAuth = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response = await apiRequest<AuthResponse>('/auth/login', 'POST', credentials);
+    const response = await apiRequest<any>('/auth/login', 'POST', credentials);
     console.log('Réponse de l\'API de connexion:', response);
-    return response;
+    // Backend renvoie access_token; on mappe vers token pour le front
+    return { user: response.user, token: response.access_token } as AuthResponse;
   },
   
   register: async (userData: RegisterRequest): Promise<AuthResponse> => {
@@ -180,9 +181,9 @@ const realAuth = {
       password: userDataToSend.password
     };
 
-    const response = await apiRequest<AuthResponse>('/auth/register', 'POST', cleanUserData);
+    const response = await apiRequest<any>('/auth/register', 'POST', cleanUserData);
     console.log('Réponse de l\'API d\'inscription:', response);
-    return response;
+    return { user: response.user, token: response.access_token } as AuthResponse;
   },
   
   getCurrentUser: async (token: string): Promise<User> => {

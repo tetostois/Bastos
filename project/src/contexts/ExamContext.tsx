@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Exam, Answer } from '../types';
+import { Exam, Answer, Question } from '../types';
+import { mapCertificationToBackendSlug, mapModuleToBackendSlug } from '../utils/mapping';
+import apiRequest from '../config/api';
 
 interface ExamContextType {
   // État de l'examen
@@ -31,88 +33,149 @@ export const ExamProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [completedExams, setCompletedExams] = useState<string[]>([]);
   
-  // Fonction pour démarrer un module spécifique
-  const startModule = (_certificationId: string, moduleId: string) => {
-    // Dans une vraie application, on chargerait le module depuis une API
-    const mockExam: Exam = {
-      id: moduleId,
-      title: `Module ${moduleId}`,
-      description: `Description du module ${moduleId}`,
-      moduleName: `Module ${moduleId}`,
-      duration: 30, // en minutes
-      isActive: true,
-      price: 0,
-      questions: [
-        {
-          id: 'q1',
-          text: `Décrivez les points clés abordés dans ce module.`,
-          type: 'text',
-          points: 10,
-          category: 'module'
-        },
-        {
-          id: 'q2',
-          text: `Quelles sont les compétences que vous avez acquises dans ce module ?`,
-          type: 'text',
-          points: 10,
-          category: 'module'
-        },
-        {
-          id: 'q3',
-          text: `Comment comptez-vous appliquer ces connaissances dans votre travail ?`,
-          type: 'text',
-          points: 10,
-          category: 'module'
-        }
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    setCurrentExam(mockExam);
-    setCurrentAnswers([]);
-    setCurrentQuestionIndex(0);
-    setTimeRemaining(mockExam.duration * 60);
-    setIsExamActive(true);
+  // Fonction pour démarrer un module spécifique (récupération réelle depuis l'API)
+  const startModule = async (certificationId: string, moduleId: string) => {
+    try {
+      // Normaliser les identifiants pour correspondre aux slugs backend
+      const certSlug = mapCertificationToBackendSlug(certificationId);
+      const moduleSlug = mapModuleToBackendSlug(moduleId);
+
+      // Récupération des questions publiées pour une certification et un module
+      // On supporte les deux formats de réponse: { data: [] } ou []
+      const endpoint = `/candidate/questions?certification_type=${encodeURIComponent(certSlug)}&module=${encodeURIComponent(moduleSlug)}`;
+      console.log('[Exam] startModule params:', { certificationId, moduleId });
+      console.log('[Exam] mapped slugs:', { certSlug, moduleSlug });
+
+      let data: any = await apiRequest<any>(endpoint, 'GET');
+      let rawList: any[] = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.questions)
+          ? data.questions
+          : Array.isArray(data)
+            ? data
+            : [];
+
+      // Fallback 1: réessayer avec les identifiants d'origine s'il n'y a aucun résultat
+      if (!rawList.length) {
+        const endpointFallback = `/candidate/questions?certification=${encodeURIComponent(certificationId)}&module=${encodeURIComponent(moduleId)}`;
+        console.warn('[Exam] Aucune question avec slugs. Nouvelle tentative avec ids UI:', { endpointFallback });
+        data = await apiRequest<any>(endpointFallback, 'GET');
+        rawList = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.questions)
+            ? data.questions
+            : Array.isArray(data)
+              ? data
+              : [];
+      }
+
+      if (!rawList.length) {
+        console.warn('[Exam] Toujours aucun résultat.', { endpoint, certificationId, moduleId, certSlug, moduleSlug, response: data });
+        alert("Aucune question disponible pour ce module. Veuillez réessayer plus tard.");
+        return;
+      }
+
+      // Mapping backend -> frontend Question
+      const mappedQuestions: Question[] = rawList.map((raw: any) => {
+        const isQcm = String(raw.question_type || raw.type || '').toLowerCase() === 'qcm' || String(raw.question_type || '').toLowerCase() === 'multiple-choice';
+        return {
+          id: String(raw.id ?? ''),
+          text: String(raw.question_text ?? raw.text ?? ''),
+          type: isQcm ? 'multiple-choice' : 'text',
+          options: isQcm && Array.isArray(raw.answer_options)
+            ? raw.answer_options.map((o: any) => String(o.text ?? o.label ?? ''))
+            : undefined,
+          points: Number(raw.points ?? 1),
+          category: String(raw.module ?? raw.category ?? moduleId)
+        } as Question;
+      });
+
+      // Calcul du temps total: somme des time_limit (en secondes) -> minutes arrondies vers le haut
+      const totalSeconds = rawList.reduce((sum: number, raw: any) => sum + Number(raw.time_limit ?? 60), 0);
+      const durationMinutes = Math.max(1, Math.ceil(totalSeconds / 60));
+
+      const builtExam: Exam = {
+        id: `${certificationId}-${moduleId}`,
+        title: `Module ${moduleId}`,
+        description: `Examen du module ${moduleId} pour ${certificationId}`,
+        moduleName: `Module ${moduleId}`,
+        duration: durationMinutes,
+        isActive: true,
+        price: 0,
+        questions: mappedQuestions,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      setCurrentExam(builtExam);
+      setCurrentAnswers([]);
+      setCurrentQuestionIndex(0);
+      setTimeRemaining(totalSeconds);
+      setIsExamActive(true);
+    } catch (error) {
+      console.error('[Exam] Erreur lors du chargement des questions:', error);
+      alert("Impossible de charger les questions de ce module. Veuillez réessayer.");
+    }
   };
 
-  // Fonction pour démarrer un examen
-  const startExam = (examId: string) => {
-    // Dans une vraie application, on chargerait l'examen depuis une API
-    const mockExam: Exam = {
-      id: examId,
-      title: 'Examen de certification',
-      description: 'Examen de certification pour valider vos compétences',
-      moduleName: 'Module de test',
-      duration: 30, // en minutes
-      isActive: true,
-      price: 0, // Gratuit pour le test
-      questions: [
-        {
-          id: 'q1',
-          text: 'Quelle est la capitale de la France ?',
-          type: 'multiple-choice',
-          options: ['Londres', 'Berlin', 'Paris', 'Madrid'],
-          points: 1,
-          category: 'général'
-        },
-        {
-          id: 'q2',
-          text: 'Décrivez votre expérience avec React.',
-          type: 'text',
-          points: 5,
-          category: 'développement'
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    setCurrentExam(mockExam);
-    setCurrentAnswers([]);
-    setCurrentQuestionIndex(0);
-    setTimeRemaining(mockExam.duration * 60); // Convertir en secondes
-    setIsExamActive(true);
+  // Fonction pour démarrer un examen complet (fallback vers la même logique en utilisant examId comme moduleId)
+  const startExam = async (examId: string) => {
+    // Par défaut, tenter de charger via l'endpoint candidat sans certification explicite
+    try {
+      const endpoint = `/candidate/questions?exam_id=${encodeURIComponent(examId)}`;
+      const data: any = await apiRequest<any>(endpoint, 'GET');
+      const rawList: any[] = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.questions)
+          ? data.questions
+          : Array.isArray(data)
+            ? data
+            : [];
+
+      if (!rawList.length) {
+        alert("Aucune question disponible pour cet examen. Veuillez réessayer plus tard.");
+        return;
+      }
+
+      const mappedQuestions: Question[] = rawList.map((raw: any) => {
+        const isQcm = String(raw.question_type || raw.type || '').toLowerCase() === 'qcm' || String(raw.question_type || '').toLowerCase() === 'multiple-choice';
+        return {
+          id: String(raw.id ?? ''),
+          text: String(raw.question_text ?? raw.text ?? ''),
+          type: isQcm ? 'multiple-choice' : 'text',
+          options: isQcm && Array.isArray(raw.answer_options)
+            ? raw.answer_options.map((o: any) => String(o.text ?? o.label ?? ''))
+            : undefined,
+          points: Number(raw.points ?? 1),
+          category: String(raw.module ?? raw.category ?? 'général')
+        } as Question;
+      });
+
+      const totalSeconds = rawList.reduce((sum: number, raw: any) => sum + Number(raw.time_limit ?? 60), 0);
+      const durationMinutes = Math.max(1, Math.ceil(totalSeconds / 60));
+
+      const builtExam: Exam = {
+        id: examId,
+        title: 'Examen de certification',
+        description: 'Examen de certification',
+        moduleName: rawList?.[0]?.module ? String(rawList[0].module) : 'Examen',
+        duration: durationMinutes,
+        isActive: true,
+        price: 0,
+        questions: mappedQuestions,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      setCurrentExam(builtExam);
+      setCurrentAnswers([]);
+      setCurrentQuestionIndex(0);
+      setTimeRemaining(totalSeconds);
+      setIsExamActive(true);
+    } catch (e) {
+      console.error('[Exam] Erreur lors du chargement de l\'examen:', e);
+      alert("Impossible de charger l'examen. Veuillez réessayer.");
+    }
   };
 
   // Fonction pour soumettre une réponse

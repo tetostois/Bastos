@@ -8,20 +8,28 @@ use Illuminate\Http\Request;
 
 class QuestionController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:api');
-    }
-
     public function index(Request $request)
     {
+        // Accepter 'certification' ou 'certification_type' pour compatibilité
         $validated = $request->validate([
-            'certification' => 'required|string',
+            'certification' => 'sometimes|string',
+            'certification_type' => 'sometimes|string',
             'module' => 'required|string',
         ]);
 
+        $certification = $validated['certification']
+            ?? $validated['certification_type']
+            ?? $request->get('certification')
+            ?? $request->get('certification_type');
+        if (!$certification) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Le paramètre certification est requis',
+            ], 422);
+        }
+
         $questions = ExamQuestion::query()
-            ->where('certification_type', $validated['certification'])
+            ->where('certification_type', $certification)
             ->where('module', $validated['module'])
             ->where('is_published', true)
             ->orderBy('created_at')
@@ -42,6 +50,7 @@ class QuestionController extends Controller
             });
 
         return response()->json([
+            'success' => true,
             'questions' => $questions,
             'total' => $questions->count(),
         ]);

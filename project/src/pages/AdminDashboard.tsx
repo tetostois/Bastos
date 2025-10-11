@@ -1759,10 +1759,10 @@ export const AdminDashboard: React.FC = () => {
                     onClick={() => {
                       console.log('=== DÉBOGAGE PUBLICATION ===');
                       console.log('Toutes les questions:', questions);
-                      console.log('Examen sélectionné:', selectedExam);
+                      console.log('Sélection courante:', { selectedCertification, selectedModule });
                       const filteredQuestions = questions.filter(
-                        q => q.certificationType === selectedExam?.certificationType && 
-                             q.module === selectedExam?.module
+                        q => q.certificationType === selectedCertification && 
+                             q.module === selectedModule
                       );
                       console.log('Questions filtrées:', filteredQuestions);
                       console.log('Nombre de questions correspondantes:', filteredQuestions.length);
@@ -1770,9 +1770,9 @@ export const AdminDashboard: React.FC = () => {
                       setShowPublishModal(true);
                     }}
                     className="bg-green-600 hover:bg-green-700 text-white"
-                    disabled={!selectedExam || questions.filter(
-                      q => q.certificationType === selectedExam?.certificationType && 
-                           q.module === selectedExam?.module
+                    disabled={questions.filter(
+                      q => q.certificationType === selectedCertification && 
+                           q.module === selectedModule
                     ).length === 0}
                   >
                     Publier l'examen
@@ -1781,10 +1781,10 @@ export const AdminDashboard: React.FC = () => {
                     onClick={() => {
                       console.log('=== ÉTAT ACTUEL ===');
                       console.log('Questions:', questions);
-                      console.log('Selected Exam:', selectedExam);
+                      console.log('Sélection courante:', { selectedCertification, selectedModule });
                       console.log('Questions filtrées:', questions.filter(
-                        q => q.certificationType === selectedExam?.certificationType && 
-                             q.module === selectedExam?.module
+                        q => q.certificationType === selectedCertification && 
+                             q.module === selectedModule
                       ));
                       console.log('==================');
                     }}

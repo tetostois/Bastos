@@ -481,6 +481,83 @@ export const AdminDashboard: React.FC = () => {
       alert(`Erreur lors de la publication : ${e.message}`);
     }
   };
+
+  // Fonction pour gérer la publication via la modale
+  const handlePublishExam = async () => {
+    try {
+      // Récupérer les questions sélectionnées via les checkboxes
+      const selectedQuestionIds = Array.from(
+        document.querySelectorAll('input[type="checkbox"]:checked')
+      ).map(input => {
+        const id = input.id.replace('question-', '');
+        return parseInt(id, 10);
+      }).filter(id => !isNaN(id)); // S'assurer que tous les IDs sont des entiers valides
+      
+      console.log('IDs sélectionnés:', selectedQuestionIds);
+      
+      if (selectedQuestionIds.length === 0) {
+        alert('Veuillez sélectionner au moins une question à publier.');
+        return;
+      }
+      
+      const response = await fetch(`${API_BASE}/admin/exams/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          certification_type: selectedCertification,
+          module: selectedModule,
+          question_ids: selectedQuestionIds
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Erreur lors de la publication');
+      }
+      
+      const result = await response.json();
+      
+      // Mettre à jour l'état local des questions
+      const updatedQuestions = questions
+        .filter((q): q is ExamQuestion & { id: string } => !!q.id)
+        .map(q => {
+          if (q.certificationType === selectedCertification && q.module === selectedModule) {
+            // Dépublier toutes les questions de ce module
+            return { 
+              ...q, 
+              isPublished: false, 
+              publishedAt: undefined
+            };
+          }
+          return q;
+        })
+        .map(q => 
+          selectedQuestionIds.includes(parseInt(q.id)) 
+            ? { 
+                ...q, 
+                isPublished: true, 
+                publishedAt: new Date().toISOString() 
+              } 
+            : q
+        );
+      
+      setQuestions(updatedQuestions);
+      
+      // Recharger les questions pour s'assurer que tout est à jour
+      await loadQuestions(selectedCertification, selectedModule);
+      
+      alert(`Examen publié avec succès ! ${result.published_count} questions publiées.`);
+      setShowPublishModal(false);
+      
+    } catch (error) {
+      console.error('Erreur lors de la publication:', error);
+      alert(`Erreur lors de la publication: ${error.message}`);
+    }
+  };
   
   // Fonction pour récupérer les soumissions d'un examinateur
   const getExaminerSubmissions = (examinerId: string) => {
@@ -1765,6 +1842,7 @@ export const AdminDashboard: React.FC = () => {
                              q.module === selectedModule
                       );
                       console.log('Questions filtrées:', filteredQuestions);
+                      console.log('IDs des questions filtrées:', filteredQuestions.map(q => ({ id: q.id, type: typeof q.id })));
                       console.log('Nombre de questions correspondantes:', filteredQuestions.length);
                       console.log('=== FIN DÉBOGAGE ===');
                       setShowPublishModal(true);
@@ -2714,6 +2792,134 @@ export const AdminDashboard: React.FC = () => {
                     {modalMode === 'create' ? 'Créer' : 'Sauvegarder'}
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Publication Modal */}
+      {showPublishModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold">
+                Publication de l'examen - {selectedCertification} - {selectedModule}
+              </h3>
+              <button 
+                onClick={() => setShowPublishModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-600 mb-4">
+                  Sélectionnez les questions à publier pour ce module. 
+                  Les questions déjà publiées seront remplacées.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <AlertCircle className="h-5 w-5 text-blue-600" />
+                    <span className="font-medium text-blue-900">Information importante</span>
+                  </div>
+                  <p className="text-blue-800 text-sm">
+                    La publication remplacera toutes les questions actuellement publiées pour ce module. 
+                    Seules les questions sélectionnées seront disponibles pour les candidats.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 max-h-96 overflow-y-auto mb-6">
+                {questions.filter(
+                  q => q.certificationType === selectedCertification && 
+                       q.module === selectedModule
+                ).map((question, index) => (
+                  <div key={question.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      id={`question-${question.id}`}
+                      defaultChecked={question.isPublished}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor={`question-${question.id}`} className="flex-1 cursor-pointer">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 mb-1">
+                            Question {index + 1}: {question.questionText}
+                          </p>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span className="flex items-center space-x-1">
+                              <FileText className="h-4 w-4" />
+                              <span>{question.questionType === 'qcm' ? 'QCM' : 'Texte libre'}</span>
+                            </span>
+                            <span className="flex items-center space-x-1">
+                              <Award className="h-4 w-4" />
+                              <span>{question.points} points</span>
+                            </span>
+                            <span className="flex items-center space-x-1">
+                              <Clock className="h-4 w-4" />
+                              <span>{question.timeLimit}s</span>
+                            </span>
+                            {question.isRequired && (
+                              <span className="text-red-600 font-medium">Obligatoire</span>
+                            )}
+                            {question.isPublished && (
+                              <span className="text-green-600 font-medium flex items-center space-x-1">
+                                <CheckCircle className="h-4 w-4" />
+                                <span>Publiée</span>
+                              </span>
+                            )}
+                          </div>
+                          {question.instructions && (
+                            <p className="text-xs text-gray-500 mt-1 italic">
+                              Instructions: {question.instructions}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                ))}
+              </div>
+              
+              {questions.filter(
+                q => q.certificationType === selectedCertification && 
+                     q.module === selectedModule
+              ).length === 0 && (
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Aucune question trouvée
+                  </h3>
+                  <p className="text-gray-600">
+                    Aucune question n'a été créée pour ce module. 
+                    Créez d'abord des questions avant de pouvoir publier l'examen.
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex space-x-3 mt-6">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setShowPublishModal(false)}
+                  className="flex-1"
+                >
+                  Annuler
+                </Button>
+                <Button 
+                  onClick={handlePublishExam}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  disabled={questions.filter(
+                    q => q.certificationType === selectedCertification && 
+                         q.module === selectedModule
+                  ).length === 0}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Publier l'examen
+                </Button>
               </div>
             </div>
           </div>

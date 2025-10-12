@@ -9,10 +9,6 @@ use Illuminate\Support\Facades\DB;
 
 class PublishExamController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware(['auth:api', 'role:admin']);
-    }
 
     public function publish(Request $request)
     {

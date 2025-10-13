@@ -9,6 +9,7 @@ import { ExaminerDashboard } from './pages/ExaminerDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ExamInterface } from './components/exam/ExamInterface';
 import APropos from './pages/APropos';
+import ModulePayment from './pages/ModulePayment';
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
@@ -31,9 +32,28 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      {user.role === 'admin' && <AdminDashboard />}
-      {user.role === 'examiner' && <ExaminerDashboard />}
-      {user.role === 'candidate' && <CandidateDashboard />}
+      <Routes>
+        {user.role === 'admin' && (
+          <>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/" element={<AdminDashboard />} />
+          </>
+        )}
+        {user.role === 'examiner' && (
+          <>
+            <Route path="/examiner" element={<ExaminerDashboard />} />
+            <Route path="/" element={<ExaminerDashboard />} />
+          </>
+        )}
+        {user.role === 'candidate' && (
+          <>
+            <Route path="/candidate-dashboard" element={<CandidateDashboard />} />
+            <Route path="/module-payment" element={<ModulePayment />} />
+            <Route path="/" element={<CandidateDashboard />} />
+          </>
+        )}
+        <Route path="*" element={<CandidateDashboard />} />
+      </Routes>
     </div>
   );
 };

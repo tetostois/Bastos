@@ -104,7 +104,10 @@ export const ExamProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         price: 0,
         questions: mappedQuestions,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        // Ajouter les propriétés nécessaires pour la soumission
+        certificationType: certSlug,
+        moduleId: moduleSlug
       };
 
       setCurrentExam(builtExam);
@@ -196,19 +199,56 @@ export const ExamProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!currentExam) return false;
     
     try {
-      // Ici, on enverrait les réponses au serveur
-      console.log('Réponses soumises:', currentAnswers);
+      // Préparer les données pour la soumission
+      const examId = `exam-${currentExam.certificationType}-${currentExam.moduleId}`;
+      const answers = currentAnswers.reduce((acc, answer) => {
+        acc[answer.questionId] = answer.value;
+        return acc;
+      }, {} as Record<string, string | number>);
       
-      // Marquer l'examen comme terminé
-      setCompletedExams(prev => [...prev, currentExam.id]);
+      console.log('Soumission de l\'examen:', examId);
+      console.log('Réponses soumises:', answers);
       
-      // Déverrouiller le module suivant
-      if (currentExam.id.includes('module')) {
-        const currentModuleNum = parseInt(currentExam.id.replace('module', ''));
-        const nextModuleId = `module${currentModuleNum + 1}`;
+      // Soumettre l'examen via l'API
+      const response = await apiRequest('/candidate/exam-submissions/submit', 'POST', {
+        exam_id: examId,
+        answers: answers,
+        certification_type: currentExam.certificationType,
+        module_id: currentExam.moduleId
+      });
+      
+      if (response.success) {
+        console.log('Examen soumis avec succès:', response);
+        console.log(`Score: ${response.score}/${response.max_score} (${response.percentage}%)`);
         
-        // Dans une vraie application, on mettrait à jour le backend
-        console.log(`Module suivant déverrouillé: ${nextModuleId}`);
+        // Marquer l'examen comme terminé
+        setCompletedExams(prev => [...prev, currentExam.id]);
+        
+        // Le déverrouillage du module suivant est géré automatiquement par le backend
+        console.log('Module suivant déverrouillé automatiquement');
+        
+        // Déclencher un événement pour recharger la progression des modules
+        console.log('🎯 [ExamContext] Déclenchement de l\'événement examSubmitted...');
+        console.log('🎯 [ExamContext] Détails de l\'événement:', {
+          certificationType: currentExam.certificationType,
+          moduleId: currentExam.moduleId,
+          score: response.score,
+          maxScore: response.max_score
+        });
+        
+        const event = new CustomEvent('examSubmitted', { 
+          detail: { 
+            certificationType: currentExam.certificationType,
+            moduleId: currentExam.moduleId,
+            score: response.score,
+            maxScore: response.max_score
+          } 
+        });
+        
+        window.dispatchEvent(event);
+        console.log('🎯 [ExamContext] Événement examSubmitted déclenché');
+      } else {
+        throw new Error(response.message || 'Erreur lors de la soumission');
       }
       
       // Réinitialiser l'état

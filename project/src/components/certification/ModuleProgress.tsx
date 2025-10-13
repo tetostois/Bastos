@@ -1,14 +1,17 @@
-import React from 'react';
-import { CheckCircle, Clock, Lock, Play, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle, Clock, Lock, Play, AlertTriangle, Loader2 } from 'lucide-react';
 import { useExam } from '../../contexts/ExamContext';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { CertificationModule, CertificationType } from '../../types';
+import { ModuleProgressService, ModuleProgressData } from '../../services/moduleProgressService';
+import { mapCertificationToBackendSlug, mapModuleToBackendSlug } from '../../utils/mapping';
 
 interface ModuleProgressProps {
   certification: CertificationType;
   completedModules: string[];
   currentModule?: string;
+  unlockedModules?: string[];
   onStartModuleWithPayment: (moduleId: string) => void;
   onContinueModule: (moduleId: string) => void;
   examStartDate?: string;
@@ -19,19 +22,88 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
   certification,
   completedModules,
   currentModule,
+  unlockedModules,
   onStartModuleWithPayment,
   onContinueModule,
   examStartDate,
   hasPaid
 }) => {
   const { startModule } = useExam();
+  const [moduleProgress, setModuleProgress] = useState<ModuleProgressData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fonction pour recharger la progression
+  const reloadProgress = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await ModuleProgressService.getModuleProgress(getCertificationSlug());
+      
+      if (response.success) {
+        setModuleProgress(response.progress);
+      } else {
+        console.error('Erreur lors du chargement de la progression:', response);
+        setError('Erreur lors du chargement de la progression');
+      }
+    } catch (err) {
+      console.error('Erreur lors du chargement de la progression:', err);
+      setError('Erreur lors du chargement de la progression');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fonction pour obtenir le slug backend de la certification
+  const getCertificationSlug = () => {
+    return mapCertificationToBackendSlug(certification.id);
+  };
+
+  // Écouter l'événement de soumission d'examen pour recharger la progression
+  useEffect(() => {
+    const handleExamSubmitted = (event: CustomEvent) => {
+      // Vérifier si l'événement concerne cette certification
+      if (event.detail && event.detail.certificationType === getCertificationSlug()) {
+        reloadProgress();
+      }
+    };
+
+    window.addEventListener('examSubmitted', handleExamSubmitted as EventListener);
+    
+    return () => {
+      window.removeEventListener('examSubmitted', handleExamSubmitted as EventListener);
+    };
+  }, []);
+
+  // Charger la progression des modules au montage du composant
+  useEffect(() => {
+    reloadProgress();
+  }, [certification.id]);
+
+  // Polling périodique supprimé pour améliorer l'expérience utilisateur
+  // Le rechargement se fait maintenant uniquement via l'événement examSubmitted
 
   const getModuleStatus = (module: CertificationModule, index: number) => {
+    // Chercher la progression du module dans les données du backend
+    const moduleSlug = mapModuleToBackendSlug(module.id);
+    const progress = moduleProgress.find(p => p.module_id === moduleSlug);
+    
+    if (progress) {
+      return progress.status === 'completed' ? 'completed' :
+             progress.status === 'in_progress' ? 'current' :
+             progress.status === 'unlocked' ? 'available' : 'locked';
+    }
+
+    // Fallback sur l'ancienne logique si pas de données backend
     if (completedModules.includes(module.id)) {
       return 'completed';
     }
     if (currentModule === module.id) {
       return 'current';
+    }
+    if (unlockedModules && unlockedModules.includes(module.id)) {
+      return 'available';
     }
     if (index === 0 || completedModules.includes(certification.modules[index - 1].id)) {
       return 'available';
@@ -39,14 +111,32 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
     return 'locked';
   };
 
-  const handleStartModule = (moduleId: string) => {
+  const handleStartModule = async (moduleId: string) => {
     if (!hasPaid) {
       onStartModuleWithPayment(moduleId);
       return;
     }
     
-    // Démarrer directement le module dans le contexte d'examen
-    startModule(certification.id, moduleId);
+    try {
+      // Marquer le module comme en cours dans le backend
+      await ModuleProgressService.startModule({
+        certification_type: getCertificationSlug(),
+        module_id: mapModuleToBackendSlug(moduleId)
+      });
+      
+      // Démarrer directement le module dans le contexte d'examen
+      startModule(certification.id, moduleId);
+      
+      // Recharger la progression pour mettre à jour l'interface
+      const response = await ModuleProgressService.getModuleProgress(getCertificationSlug());
+      if (response.success) {
+        setModuleProgress(response.progress);
+      }
+    } catch (error) {
+      console.error('Erreur lors du démarrage du module:', error);
+      // Fallback sur l'ancienne méthode
+      startModule(certification.id, moduleId);
+    }
   };
 
   const getTimeRemaining = () => {
@@ -128,10 +218,39 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
             </p>
           </div>
         )}
+
+        <div className="flex justify-center mb-4">
+          <Button
+            onClick={reloadProgress}
+            variant="secondary"
+            size="sm"
+            className="flex items-center space-x-2"
+          >
+            <Clock className="h-4 w-4" />
+            <span>Actualiser la progression</span>
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {certification.modules.map((module, index) => {
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-2 text-gray-600">Chargement de la progression...</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+            <span className="text-red-800">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {certification.modules.map((module, index) => {
           const status = getModuleStatus(module, index);
           const isDisabled = status === 'locked' || timeRemaining === 'Expiré';
 
@@ -213,7 +332,8 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* Overall Progress */}
       <Card className="bg-gray-50">

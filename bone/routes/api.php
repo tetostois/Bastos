@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\QuestionController as AdminQuestionController;
 use App\Http\Controllers\Api\Admin\ExamController as AdminExamController;
 use App\Http\Controllers\Api\Admin\PublishExamController;
+use App\Http\Controllers\Api\Candidate\ModuleProgressController;
+use App\Http\Controllers\Api\Candidate\ExamSubmissionController;
 
 // Routes publiques (sans authentification)
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -27,6 +29,20 @@ Route::middleware('auth:api')->group(function () {
     
     // Questions d'examen pour les candidats
     Route::get('/candidate/questions', [\App\Http\Controllers\Api\Candidate\QuestionController::class, 'index']);
+    
+    // Progression des modules pour les candidats
+    Route::prefix('candidate')->group(function () {
+        Route::get('/module-progress', [ModuleProgressController::class, 'index']);
+        Route::get('/module-progress/{certificationType}/{moduleId}', [ModuleProgressController::class, 'show']);
+        Route::post('/module-progress/unlock', [ModuleProgressController::class, 'unlock']);
+        Route::post('/module-progress/start', [ModuleProgressController::class, 'start']);
+        Route::post('/module-progress/complete', [ModuleProgressController::class, 'complete']);
+        
+        // Soumission d'examens
+        Route::post('/exam-submissions/submit', [ExamSubmissionController::class, 'submit']);
+        Route::get('/exam-submissions', [ExamSubmissionController::class, 'index']);
+        Route::get('/exam-submissions/{examId}', [ExamSubmissionController::class, 'show']);
+    });
 
     // Administration (protégé par rôle admin)
     Route::prefix('admin')->middleware('role:admin')->group(function () {

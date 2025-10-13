@@ -19,6 +19,7 @@ export interface User {
   certificate?: string;
   selectedCertification?: string;
   completedModules?: string[];
+  unlockedModules?: string[];
   currentModule?: string;
   examStartDate?: string;
   specialization?: string;

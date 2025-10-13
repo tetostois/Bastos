@@ -87,6 +87,11 @@ export const CandidateDashboard: React.FC = () => {
 
   const handlePaymentTypeSelect = (type: 'full' | 'per-module') => {
     setSelectedPaymentType(type);
+    if (type === 'per-module') {
+      // Redirect to per-module payment page
+      navigate('/module-payment');
+      return;
+    }
     setShowPayment(true);
   };
 
@@ -220,6 +225,7 @@ export const CandidateDashboard: React.FC = () => {
           <ModuleProgress
             certification={currentCertification}
             completedModules={user.completedModules || []}
+            unlockedModules={(user as any).unlockedModules || []}
             currentModule={user.currentModule}
             onStartModuleWithPayment={handleStartModuleWithPayment}
             onContinueModule={handleContinueModule}

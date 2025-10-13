@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\QuestionController as AdminQuestionController;
 use App\Http\Controllers\Api\Admin\ExamController as AdminExamController;
 use App\Http\Controllers\Api\Admin\PublishExamController;
+use App\Http\Controllers\Api\Admin\ExamSubmissionController as AdminExamSubmissionController;
+use App\Http\Controllers\Api\Examiner\ExamSubmissionController as ExaminerExamSubmissionController;
 use App\Http\Controllers\Api\Candidate\ModuleProgressController;
 use App\Http\Controllers\Api\Candidate\ExamSubmissionController;
 
@@ -60,5 +62,20 @@ Route::middleware('auth:api')->group(function () {
 
         // Publication d'examen (certification/module)
         Route::post('/exams/publish', [PublishExamController::class, 'publish']);
+        
+        // Gestion des soumissions d'examens
+        Route::get('/exam-submissions', [AdminExamSubmissionController::class, 'index']);
+        Route::get('/exam-submissions/{id}', [AdminExamSubmissionController::class, 'show']);
+        Route::post('/exam-submissions/{id}/assign', [AdminExamSubmissionController::class, 'assign']);
+        Route::get('/exam-submissions-stats', [AdminExamSubmissionController::class, 'stats']);
+        Route::get('/available-examiners', [AdminExamSubmissionController::class, 'availableExaminers']);
+    });
+
+    // Routes pour les examinateurs (protégé par rôle examiner)
+    Route::prefix('examiner')->middleware('role:examiner')->group(function () {
+        Route::get('/exam-submissions', [ExaminerExamSubmissionController::class, 'index']);
+        Route::get('/exam-submissions/{id}', [ExaminerExamSubmissionController::class, 'show']);
+        Route::put('/exam-submissions/{id}/grade', [ExaminerExamSubmissionController::class, 'grade']);
+        Route::get('/exam-submissions-stats', [ExaminerExamSubmissionController::class, 'stats']);
     });
 });

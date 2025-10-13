@@ -15,6 +15,7 @@ import {
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { AdminService } from '../services/adminService';
 
 interface User {
   id: string;
@@ -247,53 +248,64 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => { loadUsers(); }, []);
 
-  // Exam submissions state - initialized only once
-  const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>(() => [
-    {
-      id: '1',
-      examId: 'exam-initiation_pratique_generale-leadership',
-      candidateId: '1',
-      candidateName: 'Marie Dubois',
-      answers: [],
-      status: 'submitted',
-      startedAt: '2024-01-15T14:30:00Z',
-      submittedAt: '2024-01-15T15:30:00Z',
-      totalScore: 0
-    },
-    {
-      id: '2',
-      examId: 'exam-initiation_pratique_generale-leadership',
-      candidateId: '2',
-      candidateName: 'Paul Nkomo',
-      answers: [],
-      status: 'under_review',
-      startedAt: '2024-01-16T10:15:00Z',
-      submittedAt: '2024-01-16T11:30:00Z',
-      totalScore: 0,
-      examinerId: '1'
-    },
-    {
-      id: '3',
-      examId: 'exam-initiation_pratique_generale-leadership',
-      candidateId: '3',
-      candidateName: 'Sophie Martin',
-      answers: [
-        {
-          questionId: '1',
-          answer: 'Réponse à la question 1',
-          submittedAt: '2024-01-17T14:20:00Z',
-          score: 15,
-          feedback: 'Bonne réponse, mais pourrait être plus détaillée.'
-        }
-      ],
-      status: 'graded',
-      startedAt: '2024-01-17T13:00:00Z',
-      submittedAt: '2024-01-17T14:20:00Z',
-      gradedAt: '2024-01-17T16:45:00Z',
-      totalScore: 15,
-      examinerId: '1'
+  // Charger les soumissions d'examens au montage
+  useEffect(() => { loadExamSubmissions(); }, []);
+
+  // Charger les soumissions d'examens
+  const loadExamSubmissions = async () => {
+    try {
+      setLoadingSubmissions(true);
+      setSubmissionsError(null);
+      
+        const response = await AdminService.getExamSubmissions({
+          status: statusFilter === 'all' ? undefined : statusFilter
+        });
+      
+      if (response.success) {
+        // Transformer les données de l'API vers le format attendu par l'interface
+        const transformedSubmissions: ExamSubmissionData[] = response.submissions.map((sub: any) => ({
+          id: sub.id.toString(),
+          examId: sub.exam_id,
+          candidateId: sub.candidate_id.toString(),
+          candidateName: sub.candidate_name || `${sub.candidate?.first_name || ''} ${sub.candidate?.last_name || ''}`.trim(),
+          answers: Object.entries(sub.answers || {}).map(([questionId, answer]) => ({
+            questionId,
+            answer: answer as string,
+            submittedAt: sub.submitted_at || new Date().toISOString(),
+            score: 0,
+            feedback: ''
+          })),
+          status: sub.status,
+          startedAt: sub.started_at,
+          submittedAt: sub.submitted_at,
+          gradedAt: sub.graded_at,
+          totalScore: sub.total_score || 0,
+          examinerId: sub.examiner_id?.toString()
+        }));
+        
+        setExamSubmissionsState(transformedSubmissions);
+      } else {
+        setSubmissionsError('Erreur lors du chargement des soumissions');
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des soumissions:', error);
+      setSubmissionsError('Erreur lors du chargement des soumissions');
+    } finally {
+      setLoadingSubmissions(false);
     }
-  ]);
+  };
+
+  // Charger les soumissions au montage et quand la section change
+  useEffect(() => {
+    if (activeSection === 'exams') {
+      loadExamSubmissions();
+    }
+  }, [activeSection, statusFilter]);
+
+  // Exam submissions state
+  const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
 
   // Exam assignments state - tracks examiner assignments to submissions
   const [examAssignmentsState, setExamAssignmentsState] = useState<ExamAssignment[]>([
@@ -998,6 +1010,10 @@ export const AdminDashboard: React.FC = () => {
         errors.phone = ['Le téléphone est obligatoire'];
       }
       
+      if (!examinerForm.specialization) {
+        errors.specialization = ['La spécialisation est obligatoire'];
+      }
+      
       if (modalMode === 'create') {
         if (!examinerForm.password) {
           errors.password = ['Le mot de passe est obligatoire'];
@@ -1023,11 +1039,10 @@ export const AdminDashboard: React.FC = () => {
           last_name: examinerForm.lastName,
           email: examinerForm.email,
           phone: examinerForm.phone,
-          specialization: examinerForm.specialization || undefined,
-          experience: examinerForm.experience || undefined,
+          specialization: examinerForm.specialization || '',
+          experience: examinerForm.experience || null,
           password: examinerForm.password,
-          password_confirmation: examinerForm.passwordConfirm,
-          role: 'examiner'
+          password_confirmation: examinerForm.passwordConfirm
         };
         
         const res = await fetch(`${API_BASE}/admin/users/create-examiner`, {
@@ -1052,7 +1067,13 @@ export const AdminDashboard: React.FC = () => {
               serverErrors[camelKey] = data.errors[key];
             });
             setFieldErrors(serverErrors);
-            setError('Veuillez corriger les erreurs dans le formulaire');
+            
+            // Message d'erreur spécifique pour l'email déjà utilisé
+            if (data.errors.email && (data.errors.email.includes('déjà utilisé') || data.errors.email.includes('already been taken'))) {
+              setError('Cette adresse email est déjà utilisée. Veuillez en choisir une autre.');
+            } else {
+              setError('Veuillez corriger les erreurs dans le formulaire');
+            }
             return;
           }
           throw new Error(data.message || data.error || 'Erreur lors de la création de l\'examinateur');
@@ -1068,8 +1089,8 @@ export const AdminDashboard: React.FC = () => {
           last_name: examinerForm.lastName,
           email: examinerForm.email,
           phone: examinerForm.phone,
-          specialization: examinerForm.specialization || undefined,
-          experience: examinerForm.experience || undefined
+          specialization: examinerForm.specialization || '',
+          experience: examinerForm.experience || ''
         };
         
         const res = await fetch(`${API_BASE}/admin/users/${selectedExaminer.id}`, {
@@ -1150,63 +1171,37 @@ export const AdminDashboard: React.FC = () => {
   };
 
   // Fonction pour assigner un examinateur à une soumission
-  const assignExaminer = (submissionId: string, examinerId: string) => {
-    const submission = examSubmissionsState.find(s => s.id === submissionId);
-    if (!submission) return;
-    
-    // Vérification que l'examId est défini
-    if (!submission.examId) {
-      console.error('Impossible d\'assigner un examinateur : examId est indéfini pour la soumission', submissionId);
-      return;
-    }
-
-    // Mettre à jour l'état des soumissions pour refléter l'assignation
-    setExamSubmissionsState(prev => 
-      prev.map(s => 
-        s.id === submissionId 
-          ? { ...s, examinerId, status: 'under_review' as const }
-          : s
-      )
-    );
-
-    // Mettre à jour ou créer l'assignation d'examen
-    setExamAssignmentsState(prev => {
-      const existingAssignment = prev.find(a => a.submissionId === submissionId);
+  const assignExaminer = async (submissionId: string, examinerId: string) => {
+    try {
+      const response = await AdminService.assignExaminer(submissionId, examinerId);
       
-      if (existingAssignment) {
-        return prev.map(assignment => 
-          assignment.id === existingAssignment.id
-            ? { 
-                ...assignment, 
-                examinerId,
-                status: 'in_progress' as const,
-                assignedAt: new Date().toISOString()
-              }
-            : assignment
+      if (response.success) {
+        // Mettre à jour l'état local
+        setExamSubmissionsState(prev => 
+          prev.map(s => 
+            s.id === submissionId 
+              ? { ...s, examinerId, status: 'under_review' as const }
+              : s
+          )
         );
-      } else {
-        const newAssignment: ExamAssignment = {
-          id: `assign-${Date.now()}`,
-          examId: submission.examId, // Maintenant garanti d'être défini grâce à la vérification plus haut
-          examinerId,
-          assignedAt: new Date().toISOString(),
-          status: 'in_progress',
-          submissionId
-        };
-        return [...prev, newAssignment];
-      }
-    });
 
-    // Mettre à jour le compteur d'examens assignés de l'examinateur
-    setExaminers(prev => 
-      prev.map(e => 
-        e.id === examinerId 
-          ? { ...e, assignedExams: (e.assignedExams || 0) + 1 }
-          : e
-      )
-    );
-    
-    alert('Examinateur assigné avec succès.');
+        // Mettre à jour le compteur d'examens assignés de l'examinateur
+        setExaminers(prev => 
+          prev.map(e => 
+            e.id === examinerId 
+              ? { ...e, assignedExams: (e.assignedExams || 0) + 1 }
+              : e
+          )
+        );
+        
+        toast.success('Examinateur assigné avec succès');
+      } else {
+        toast.error('Erreur lors de l\'assignation de l\'examinateur');
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'assignation:', error);
+      toast.error('Erreur lors de l\'assignation de l\'examinateur');
+    }
   };
 
   const downloadCertificate = (certificate: Certificate) => {
@@ -2236,7 +2231,6 @@ export const AdminDashboard: React.FC = () => {
                                     }}
                                     className="text-xs border rounded p-1"
                                     title="Assigner un examinateur"
-                                    defaultValue=""
                                   >
                                     <option value="">Assigner...</option>
                                     {examiners
@@ -2774,9 +2768,10 @@ export const AdminDashboard: React.FC = () => {
                   onChange={(e) => setExaminerForm({...examinerForm, phone: e.target.value})}
                 />
                 <Input
-                  label="Spécialisation"
+                  label="Spécialisation *"
                   value={examinerForm.specialization}
                   onChange={(e) => setExaminerForm({...examinerForm, specialization: e.target.value})}
+                  required
                 />
                 <Input
                   label="Expérience"

@@ -1,23 +1,24 @@
-import React, { useState } from 'react';
-import { FileText, Clock, CheckCircle, User, MessageSquare, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, Clock, CheckCircle, User, MessageSquare, Star, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { ExaminerService, ExaminerSubmission, SubmissionDetails } from '../services/examinerService';
 
 interface Submission {
   id: string;
   candidateName: string;
   candidateEmail: string;
   submittedAt: string;
-  status: 'pending' | 'corrected';
+  status: 'pending' | 'corrected' | 'under_review' | 'graded';
   score?: number;
   answers: { questionId: string; question: string; answer: string; points: number }[];
 }
 
 export const ExaminerDashboard: React.FC = () => {
   const { user } = useAuth();
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetails | null>(null);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -25,6 +26,16 @@ export const ExaminerDashboard: React.FC = () => {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<ExaminerSubmission[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [stats, setStats] = useState({
+    total_assigned: 0,
+    pending: 0,
+    graded: 0,
+    average_score: 0
+  });
   
   const [profileForm, setProfileForm] = useState({
     firstName: user?.firstName || '',
@@ -40,73 +51,87 @@ export const ExaminerDashboard: React.FC = () => {
     message: ''
   });
 
-  // Mock submissions data
-  const [submissions, setSubmissions] = useState<Submission[]>([
-    {
-      id: '1',
-      candidateName: 'Marie Candidate',
-      candidateEmail: 'marie.candidate@email.com',
-      submittedAt: '2024-01-15T14:30:00Z',
-      status: 'pending',
-      answers: [
-        {
-          questionId: '1',
-          question: 'Qu\'est-ce qui caractérise le mieux un leader transformationnel ?',
-          answer: 'Il inspire et motive ses équipes vers une vision commune',
-          points: 10
-        },
-        {
-          questionId: '2',
-          question: 'Comment un leader doit-il réagir face à un conflit dans son équipe ?',
-          answer: 'Faciliter la communication entre les parties pour trouver une solution',
-          points: 10
-        },
-        {
-          questionId: '3',
-          question: 'Décrivez votre approche pour développer les compétences de votre équipe.',
-          answer: 'Mon approche pour développer les compétences de mon équipe se base sur plusieurs piliers. D\'abord, j\'identifie les forces et faiblesses individuelles par des évaluations régulières. Ensuite, je crée des plans de développement personnalisés avec des objectifs SMART. J\'encourage la formation continue et le mentorat entre pairs. Je délègue progressivement des responsabilités plus importantes pour favoriser l\'apprentissage par l\'expérience. Enfin, je maintiens un feedback constructif constant et je reconnais les progrès pour maintenir la motivation.',
-          points: 20
-        },
-        {
-          questionId: '4',
-          question: 'Quelle est l\'importance de la communication dans le leadership ?',
-          answer: 'Elle permet d\'établir la confiance et l\'alignement',
-          points: 10
-        },
-        {
-          questionId: '5',
-          question: 'Comment évalueriez-vous le succès d\'une initiative de leadership que vous avez menée ?',
-          answer: 'Pour évaluer le succès d\'une initiative de leadership, j\'utilise plusieurs indicateurs. Par exemple, lors de la réorganisation de mon équipe l\'année dernière, j\'ai mesuré : 1) L\'engagement des employés via des sondages (amélioration de 25%), 2) La productivité (augmentation de 15%), 3) Le taux de rétention (réduction du turnover de 30%), 4) Les feedbacks clients (satisfaction en hausse de 20%). J\'ai aussi évalué les objectifs qualitatifs comme l\'amélioration de la collaboration inter-équipes et le développement des compétences individuelles. Cette approche multi-dimensionnelle m\'a permis de valider l\'efficacité de mon leadership et d\'identifier les axes d\'amélioration.',
-          points: 25
-        }
-      ]
-    },
-    {
-      id: '2',
-      candidateName: 'Jean Dupont',
-      candidateEmail: 'jean.dupont@email.com',
-      submittedAt: '2024-01-14T10:15:00Z',
-      status: 'corrected',
-      score: 78,
-      answers: [
-        {
-          questionId: '1',
-          question: 'Qu\'est-ce qui caractérise le mieux un leader transformationnel ?',
-          answer: 'Il se concentre uniquement sur les résultats financiers',
-          points: 0
-        },
-        {
-          questionId: '2',
-          question: 'Comment un leader doit-il réagir face à un conflit dans son équipe ?',
-          answer: 'Faciliter la communication entre les parties pour trouver une solution',
-          points: 10
-        }
-      ]
+  // Charger les soumissions depuis l'API
+  const loadSubmissions = async () => {
+    try {
+      setLoadingSubmissions(true);
+      setSubmissionsError(null);
+      
+      const response = await ExaminerService.getSubmissions({
+        status: statusFilter === 'all' ? undefined : statusFilter
+      });
+      
+      if (response.success) {
+        setSubmissions(response.submissions);
+      } else {
+        setSubmissionsError('Erreur lors du chargement des soumissions');
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des soumissions:', error);
+      setSubmissionsError('Erreur lors du chargement des soumissions');
+    } finally {
+      setLoadingSubmissions(false);
     }
-  ]);
+  };
 
-  const pendingSubmissions = submissions.filter(s => s.status === 'pending');
-  const correctedSubmissions = submissions.filter(s => s.status === 'corrected');
+  // Charger les statistiques
+  const loadStats = async () => {
+    try {
+      setLoadingStats(true);
+      const response = await ExaminerService.getStats();
+      
+      if (response.success) {
+        setStats(response.stats);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Charger les détails d'une soumission
+  const loadSubmissionDetails = async (submissionId: string) => {
+    try {
+      const response = await ExaminerService.getSubmission(submissionId);
+      
+      if (response.success) {
+        setSelectedSubmission(response.submission);
+        
+        // Initialiser les scores et feedback
+        const initialScores: Record<string, number> = {};
+        const initialFeedback: Record<string, string> = {};
+        
+        if (response.submission.questions_details && Array.isArray(response.submission.questions_details)) {
+          response.submission.questions_details.forEach((qa) => {
+            if (qa.question_id) {
+              initialScores[qa.question_id] = 0;
+              initialFeedback[qa.question_id] = '';
+            }
+          });
+        }
+        
+        setScores(initialScores);
+        setFeedback(initialFeedback);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des détails de la soumission:', error);
+    }
+  };
+
+  // Charger les données au montage du composant
+  useEffect(() => {
+    loadSubmissions();
+    loadStats();
+  }, []);
+
+  // Recharger quand le filtre change
+  useEffect(() => {
+    loadSubmissions();
+  }, [statusFilter]);
+
+  const pendingSubmissions = submissions.filter(s => s.status === 'under_review');
+  const correctedSubmissions = submissions.filter(s => s.status === 'graded');
 
   const handleScoreChange = (questionId: string, score: number) => {
     setScores(prev => ({ ...prev, [questionId]: score }));
@@ -116,20 +141,43 @@ export const ExaminerDashboard: React.FC = () => {
     setFeedback(prev => ({ ...prev, [questionId]: text }));
   };
 
-  const handleSubmitCorrection = () => {
+  const handleSubmitCorrection = async () => {
     if (!selectedSubmission) return;
 
-    const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
-    
-    setSubmissions(prev => prev.map(submission => 
-      submission.id === selectedSubmission.id 
-        ? { ...submission, status: 'corrected' as const, score: totalScore }
-        : submission
-    ));
+    try {
+      const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
+      
+      // Préparer les données de notation
+      const grades = Object.entries(scores).map(([questionId, score]) => ({
+        question_id: questionId,
+        score: score,
+        feedback: feedback[questionId] || ''
+      }));
 
-    setSelectedSubmission(null);
-    setScores({});
-    setFeedback({});
+      const response = await ExaminerService.gradeSubmission(
+        selectedSubmission.id,
+        grades,
+        'Correction terminée',
+        totalScore
+      );
+
+      if (response.success) {
+        // Recharger les soumissions et les statistiques
+        await loadSubmissions();
+        await loadStats();
+        
+        setSelectedSubmission(null);
+        setScores({});
+        setFeedback({});
+        
+        alert('Correction soumise avec succès !');
+      } else {
+        alert('Erreur lors de la soumission de la correction');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la soumission de la correction:', error);
+      alert('Erreur lors de la soumission de la correction');
+    }
   };
   
   const saveProfile = () => {
@@ -156,20 +204,33 @@ export const ExaminerDashboard: React.FC = () => {
   
   // Filtrer les soumissions
   const filteredSubmissions = submissions.filter(submission => {
-    const matchesSearch = submission.candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         submission.candidateEmail.toLowerCase().includes(searchTerm.toLowerCase());
+    const candidateName = submission.candidate_name || '';
+    const candidateEmail = submission.candidate_email || '';
+    const matchesSearch = candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         candidateEmail.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || submission.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const formatDate = (dateString: string) => {
-    return new Intl.DateTimeFormat('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(dateString));
+    if (!dateString) return 'Date non disponible';
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Date invalide';
+      }
+      
+      return new Intl.DateTimeFormat('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    } catch (error) {
+      return 'Date invalide';
+    }
   };
 
   if (!user) return null;
@@ -180,9 +241,9 @@ export const ExaminerDashboard: React.FC = () => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Dashboard Examinateur
-          </h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Dashboard Examinateur
+            </h1>
             <div className="flex space-x-3">
               <Button
                 variant="secondary"
@@ -224,7 +285,9 @@ export const ExaminerDashboard: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">En attente</h3>
-                <p className="text-2xl font-bold text-orange-600">{pendingSubmissions.length}</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {loadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.pending || 0)}
+                </p>
               </div>
             </div>
           </Card>
@@ -236,7 +299,9 @@ export const ExaminerDashboard: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Corrigés</h3>
-                <p className="text-2xl font-bold text-green-600">{correctedSubmissions.length}</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {loadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.graded || 0)}
+                </p>
               </div>
             </div>
           </Card>
@@ -248,7 +313,9 @@ export const ExaminerDashboard: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Total</h3>
-                <p className="text-2xl font-bold text-blue-600">{submissions.length}</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {loadingStats ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.total_assigned || 0)}
+                </p>
               </div>
             </div>
           </Card>
@@ -259,7 +326,7 @@ export const ExaminerDashboard: React.FC = () => {
           <div className="lg:col-span-1 space-y-6">
             <Card>
               <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Corrections en attente</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">Corrections en attente</h3>
                 <div className="flex space-x-2">
                   <input
                     type="text"
@@ -274,47 +341,59 @@ export const ExaminerDashboard: React.FC = () => {
                     className="px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="all">Tous</option>
-                    <option value="pending">En attente</option>
-                    <option value="corrected">Corrigés</option>
+                    <option value="under_review">En attente</option>
+                    <option value="graded">Corrigés</option>
                   </select>
                 </div>
               </div>
-              <div className="space-y-3">
-                {filteredSubmissions.filter(s => s.status === 'pending').map(submission => (
-                  <div
-                    key={submission.id}
-                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      selectedSubmission?.id === submission.id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedSubmission(submission)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <User className="h-5 w-5 text-gray-400" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">
-                          {submission.candidateName}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(submission.submittedAt)}
-                        </p>
+              
+              {loadingSubmissions ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                </div>
+              ) : submissionsError ? (
+                <div className="flex items-center justify-center py-8 text-red-600">
+                  <AlertCircle className="h-5 w-5 mr-2" />
+                  {submissionsError}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredSubmissions.filter(s => s.status === 'under_review').map(submission => (
+                    <div
+                      key={submission.id}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        selectedSubmission?.id === submission.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => loadSubmissionDetails(submission.id)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <User className="h-5 w-5 text-gray-400" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">
+                            {submission.candidate_name || 'Candidat inconnu'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(submission.submitted_at)}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {filteredSubmissions.filter(s => s.status === 'pending').length === 0 && (
-                  <p className="text-gray-500 text-center py-4">
-                    Aucune correction en attente
-                  </p>
-                )}
-              </div>
+                  ))}
+                  {filteredSubmissions.filter(s => s.status === 'under_review').length === 0 && (
+                    <p className="text-gray-500 text-center py-4">
+                      Aucune correction en attente
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
 
             <Card>
               <h3 className="font-semibold text-gray-900 mb-4">Récemment corrigés</h3>
               <div className="space-y-3">
-                {filteredSubmissions.filter(s => s.status === 'corrected').slice(0, 5).map(submission => (
+                {filteredSubmissions.filter(s => s.status === 'graded').slice(0, 5).map(submission => (
                   <div
                     key={submission.id}
                     className="p-3 border border-gray-200 rounded-lg"
@@ -322,16 +401,16 @@ export const ExaminerDashboard: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium text-gray-900">
-                          {submission.candidateName}
+                          {submission.candidate_name || 'Candidat inconnu'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {formatDate(submission.submittedAt)}
+                          {formatDate(submission.submitted_at)}
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Star className="h-4 w-4 text-yellow-500" />
                         <span className="font-bold text-green-600">
-                          {submission.score}/100
+                          {submission.total_score || 0}/100
                         </span>
                       </div>
                     </div>
@@ -358,39 +437,58 @@ export const ExaminerDashboard: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Candidat :</span>
-                      <span className="ml-2 font-medium">{selectedSubmission.candidateName}</span>
+                      <span className="ml-2 font-medium">{selectedSubmission.candidate?.first_name} {selectedSubmission.candidate?.last_name}</span>
                     </div>
                     <div>
                       <span className="text-gray-600">Email :</span>
-                      <span className="ml-2 font-medium">{selectedSubmission.candidateEmail}</span>
+                      <span className="ml-2 font-medium">{selectedSubmission.candidate?.email}</span>
                     </div>
                     <div>
                       <span className="text-gray-600">Soumis le :</span>
-                      <span className="ml-2 font-medium">{formatDate(selectedSubmission.submittedAt)}</span>
+                      <span className="ml-2 font-medium">{formatDate(selectedSubmission.submitted_at)}</span>
                     </div>
                     <div>
                       <span className="text-gray-600">Questions :</span>
-                      <span className="ml-2 font-medium">{selectedSubmission.answers.length}</span>
+                      <span className="ml-2 font-medium">{selectedSubmission.questions_details?.length || 0}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-6 mb-6">
-                  {selectedSubmission.answers.map((answer, index) => (
-                    <div key={answer.questionId} className="border border-gray-200 rounded-lg p-4">
+                  {selectedSubmission.questions_details?.map((qa, index) => (
+                    <div key={qa.question_id} className="border border-gray-200 rounded-lg p-4">
                       <div className="mb-3">
                         <h4 className="font-medium text-gray-900 mb-2">
-                          Question {index + 1} ({answer.points} points)
+                          Question {index + 1} ({qa.points_possible} points)
                         </h4>
-                        <p className="text-gray-700 text-sm mb-3">{answer.question}</p>
+                        <p className="text-gray-700 text-sm mb-3">{qa.question_text}</p>
+                        
+                        {/* Instructions supplémentaires */}
+                        {qa.instructions && (
+                          <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-3">
+                            <p className="text-sm text-blue-800">
+                              <strong>Instructions :</strong> {qa.instructions}
+                            </p>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="mb-4">
                         <h5 className="font-medium text-gray-800 mb-2">Réponse du candidat :</h5>
                         <div className="bg-gray-50 p-3 rounded border">
-                          <p className="text-gray-900">{answer.answer}</p>
+                          <p className="text-gray-900">{qa.candidate_answer}</p>
                         </div>
                       </div>
+
+                      {/* Réponse de référence pour l'examinateur */}
+                      {qa.reference_answer && (
+                        <div className="mb-4">
+                          <h5 className="font-medium text-gray-800 mb-2">Réponse de référence :</h5>
+                          <div className="bg-green-50 p-3 rounded border border-green-200">
+                            <p className="text-gray-900 text-sm">{qa.reference_answer}</p>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -401,12 +499,12 @@ export const ExaminerDashboard: React.FC = () => {
                             <Input
                               type="number"
                               min="0"
-                              max={answer.points}
-                              value={scores[answer.questionId] || ''}
-                              onChange={(e) => handleScoreChange(answer.questionId, parseInt(e.target.value) || 0)}
+                              max={qa.points_possible}
+                              value={scores[qa.question_id] || ''}
+                              onChange={(e) => handleScoreChange(qa.question_id, parseInt(e.target.value) || 0)}
                               className="w-20"
                             />
-                            <span className="text-gray-600">/ {answer.points}</span>
+                            <span className="text-gray-600">/ {qa.points_possible}</span>
                           </div>
                         </div>
                         
@@ -415,8 +513,8 @@ export const ExaminerDashboard: React.FC = () => {
                             Commentaire (optionnel)
                           </label>
                           <Input
-                            value={feedback[answer.questionId] || ''}
-                            onChange={(e) => handleFeedbackChange(answer.questionId, e.target.value)}
+                            value={feedback[qa.question_id] || ''}
+                            onChange={(e) => handleFeedbackChange(qa.question_id, e.target.value)}
                             placeholder="Commentaire sur la réponse..."
                           />
                         </div>
@@ -430,7 +528,7 @@ export const ExaminerDashboard: React.FC = () => {
                     <div className="flex items-center space-x-4">
                       <span className="text-lg font-medium text-gray-900">Score total :</span>
                       <span className="text-2xl font-bold text-blue-600">
-                        {Object.values(scores).reduce((sum, score) => sum + score, 0)} / 75
+                        {Object.values(scores).reduce((sum, score) => sum + score, 0)} / {selectedSubmission.questions_details?.reduce((sum, qa) => sum + qa.points_possible, 0) || 0}
                       </span>
                     </div>
                   </div>
@@ -444,7 +542,7 @@ export const ExaminerDashboard: React.FC = () => {
                     </Button>
                     <Button
                       onClick={handleSubmitCorrection}
-                      disabled={selectedSubmission.answers.some(answer => scores[answer.questionId] === undefined)}
+                      disabled={selectedSubmission.questions_details?.some(qa => scores[qa.question_id] === undefined) || false}
                       className="flex items-center space-x-2"
                     >
                       <CheckCircle className="h-4 w-4" />
@@ -485,20 +583,20 @@ export const ExaminerDashboard: React.FC = () => {
             <div className="p-6">
               <div className="grid grid-cols-2 gap-6">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600">{submissions.length}</div>
+                  <div className="text-3xl font-bold text-blue-600">{stats?.total_assigned || 0}</div>
                   <div className="text-sm text-gray-600">Examens assignés</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-green-600">{correctedSubmissions.length}</div>
+                  <div className="text-3xl font-bold text-green-600">{stats?.graded || 0}</div>
                   <div className="text-sm text-gray-600">Examens corrigés</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-orange-600">{pendingSubmissions.length}</div>
+                  <div className="text-3xl font-bold text-orange-600">{stats?.pending || 0}</div>
                   <div className="text-sm text-gray-600">En attente</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-purple-600">24h</div>
-                  <div className="text-sm text-gray-600">Temps moyen</div>
+                  <div className="text-3xl font-bold text-purple-600">{stats?.average_score || 0}%</div>
+                  <div className="text-sm text-gray-600">Score moyen</div>
                 </div>
               </div>
               

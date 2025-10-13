@@ -215,19 +215,30 @@ class ExamSubmissionController extends Controller
                 'competences_professionnelles',
                 'entrepreneuriat'
             ],
-            'perfectionnement_avance' => [
-                'strategie_avancee',
-                'innovation',
-                'gestion_risques',
-                'leadership_transformational',
-                'excellence_operationnelle'
+            'cadre_manager_professionnel' => [
+                'leadership',
+                'competences_professionnelles',
+                'entrepreneuriat'
             ],
-            'expertise_specialisee' => [
-                'expertise_metier',
-                'recherche_developpement',
-                'conseil_strategique',
-                'formation_mentorat',
-                'innovation_continue'
+            'rentabilite_entrepreneuriale' => [
+                'leadership',
+                'competences_professionnelles',
+                'entrepreneuriat'
+            ],
+            'chef_dirigeant_entreprise_africaine' => [
+                'leadership',
+                'competences_professionnelles',
+                'entrepreneuriat'
+            ],
+            'investisseur_entreprises_africaines' => [
+                'leadership',
+                'competences_professionnelles',
+                'entrepreneuriat'
+            ],
+            'ingenieries_specifiques' => [
+                'leadership',
+                'competences_professionnelles',
+                'entrepreneuriat'
             ]
         ];
 

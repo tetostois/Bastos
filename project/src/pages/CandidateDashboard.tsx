@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Clock, CreditCard, FileText, BookOpen, AlertCircle, Download, Play } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +40,7 @@ export const CandidateDashboard: React.FC = () => {
     message: ''
   });
 
+
   if (!user) return null;
 
   const currentCertification = selectedCertification ? getCertificationById(selectedCertification) : null;
@@ -56,6 +57,7 @@ export const CandidateDashboard: React.FC = () => {
     user.selectedCertification = certification.id;
     setShowCertificationSelector(false);
   };
+
 
   const handleStartModuleWithPayment = (moduleId: string) => {
     if (!currentCertification) return;
@@ -725,6 +727,7 @@ export const CandidateDashboard: React.FC = () => {
           </Card>
         </div>
       )}
+
     </div>
   );
 };

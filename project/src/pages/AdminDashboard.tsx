@@ -2160,95 +2160,174 @@ export const AdminDashboard: React.FC = () => {
               <h2 className="text-xl font-semibold text-gray-900">Gestion des Examens</h2>
               
               <Card>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Soumissions d'examens</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 font-medium text-gray-900">Candidat</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-900">Date soumission</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-900">Statut</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-900">Assigné à</th>
-                        <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {examSubmissionsState.map((submission) => {
-                        const candidate = users.find(u => u.id === submission.candidateId);
-                        return (
-                          <tr key={submission.id} className="border-b border-gray-100">
-                            <td className="py-3 px-4">
-                              <div>
-                                <p className="font-medium text-gray-900">{submission.candidateName}</p>
-                                <p className="text-sm text-gray-500">
-                                  {candidate?.email || 'Email non disponible'}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-gray-900">
-                              {formatDate(submission.submittedAt)}
-                            </td>
-                            <td className="py-3 px-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Soumissions d'examens par candidat</h3>
+                <div className="space-y-4">
+                  {(() => {
+                    // Grouper les soumissions par candidat + certification
+                    const groupedByCandidateAndCert = examSubmissionsState.reduce((acc, submission) => {
+                      const candidateId = submission.candidateId;
+                      
+                      // Extraire la certification de l'exam_id
+                      const certMatch = submission.examId.match(/^exam-(.*?)-/);
+                      const certification = certMatch ? certMatch[1] : 'unknown';
+                      
+                      const key = `${candidateId}-${certification}`;
+                      
+                      if (!acc[key]) {
+                        acc[key] = {
+                          candidateId,
+                          candidateName: submission.candidateName,
+                          candidateEmail: users.find(u => u.id === submission.candidateId)?.email || 'Email non disponible',
+                          certification,
+                          submissions: [],
+                          latestSubmissionDate: submission.submittedAt,
+                          status: submission.status,
+                          examinerId: submission.examinerId
+                        };
+                      }
+                      acc[key].submissions.push(submission);
+                      
+                      // Mettre à jour la date la plus récente
+                      if (submission.submittedAt && new Date(submission.submittedAt) > new Date(acc[key].latestSubmissionDate)) {
+                        acc[key].latestSubmissionDate = submission.submittedAt;
+                      }
+                      
+                      // Mettre à jour le statut (priorité: under_review > submitted > graded)
+                      if (submission.status === 'under_review' || 
+                          (submission.status === 'submitted' && acc[key].status !== 'under_review') ||
+                          (submission.status === 'graded' && acc[key].status !== 'under_review' && acc[key].status !== 'submitted')) {
+                        acc[key].status = submission.status;
+                        acc[key].examinerId = submission.examinerId;
+                      }
+                      
+                      return acc;
+                    }, {} as Record<string, any>);
+
+                    return Object.values(groupedByCandidateAndCert).map((candidateCert: any) => {
+                      // Formater le nom de la certification
+                      const certificationName = candidateCert.certification
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, (l: string) => l.toUpperCase());
+                      
+                      return (
+                        <div key={`${candidateCert.candidateId}-${candidateCert.certification}`} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 text-lg">
+                                {candidateCert.candidateName}
+                              </h4>
+                              <p className="text-sm text-gray-500">{candidateCert.candidateEmail}</p>
+                              <p className="text-xs text-blue-600 font-medium">
+                                Certification: {certificationName}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-gray-600">
+                                Dernière soumission: {formatDate(candidateCert.latestSubmissionDate)}
+                              </p>
                               <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                submission.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                                submission.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
-                                submission.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                                candidateCert.status === 'draft' ? 'bg-gray-100 text-gray-800' :
+                                candidateCert.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                                candidateCert.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
                                 'bg-green-100 text-green-800'
                               }`}>
-                                {submission.status === 'draft' ? 'Brouillon' :
-                                 submission.status === 'submitted' ? 'Soumis' :
-                                 submission.status === 'under_review' ? 'En correction' :
-                                 submission.status === 'graded' ? 'Corrigé' : 'Inconnu'}
+                                {candidateCert.status === 'draft' ? 'Brouillon' :
+                                 candidateCert.status === 'submitted' ? 'Soumis' :
+                                 candidateCert.status === 'under_review' ? 'En correction' :
+                                 'Corrigé'}
                               </span>
-                            </td>
-                            <td className="py-3 px-4 text-gray-900">
-                              {submission.examinerId 
-                                ? examiners.find(e => e.id === submission.examinerId)?.firstName + ' ' + 
-                                  examiners.find(e => e.id === submission.examinerId)?.lastName
-                                : '-'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex space-x-2 items-center">
-                                <button 
-                                  className="text-blue-600 hover:text-blue-800"
-                                  onClick={() => {
-                                    setCurrentExamSubmission(submission);
-                                    setShowSubmissionModal(true);
-                                  }}
-                                  title="Voir les détails"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </button>
+                            </div>
+                          </div>
+                          
+                          {/* Afficher les modules de cette certification */}
+                          <div className="mb-4">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">
+                              Modules soumis ({candidateCert.submissions.length}):
+                            </h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {candidateCert.submissions.map((submission: any) => {
+                                // Extraire le module de l'exam_id
+                                const moduleMatch = submission.examId.match(/exam-.*?-(.*?)$/);
+                                const moduleName = moduleMatch ? moduleMatch[1].replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 'Module inconnu';
                                 
-                                {submission.status === 'submitted' && (
-                                  <select
-                                    value={submission.examinerId || ''}
-                                    onChange={(e) => {
-                                      const examinerId = e.target.value;
-                                      if (examinerId) {
+                                return (
+                                  <div key={submission.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                    <span className="text-sm text-gray-700">{moduleName}</span>
+                                    <span className={`px-2 py-1 text-xs rounded ${
+                                      submission.status === 'graded' ? 'bg-green-100 text-green-800' :
+                                      submission.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {submission.status === 'graded' ? 'Corrigé' :
+                                       submission.status === 'under_review' ? 'En cours' :
+                                       'Soumis'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Actions */}
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-gray-600">
+                              {candidateCert.examinerId ? (
+                                <span>Assigné à: <strong>
+                                  {examiners.find(e => e.id === candidateCert.examinerId)?.firstName} {examiners.find(e => e.id === candidateCert.examinerId)?.lastName}
+                                </strong></span>
+                              ) : (
+                                <span className="text-orange-600">Non assigné</span>
+                              )}
+                            </div>
+                            <div className="flex space-x-2">
+                              <button 
+                                className="text-blue-600 hover:text-blue-800"
+                                onClick={() => {
+                                  setCurrentExamSubmission(candidateCert.submissions[0]);
+                                  setShowSubmissionModal(true);
+                                }}
+                                title="Voir les détails"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              
+                              {candidateCert.status === 'submitted' && (
+                                <select
+                                  value={candidateCert.examinerId || ''}
+                                  onChange={(e) => {
+                                    const examinerId = e.target.value;
+                                    if (examinerId) {
+                                      // Assigner TOUS les modules de cette certification au même examinateur
+                                      candidateCert.submissions.forEach((submission: any) => {
                                         assignExaminer(submission.id, examinerId);
-                                      }
-                                    }}
-                                    className="text-xs border rounded p-1"
-                                    title="Assigner un examinateur"
-                                  >
-                                    <option value="">Assigner...</option>
-                                    {examiners
-                                      .filter(e => e.isActive)
-                                      .map(examiner => (
-                                        <option key={examiner.id} value={examiner.id}>
-                                          {examiner.firstName[0]}. {examiner.lastName}
-                                        </option>
-                                      ))}
-                                  </select>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                      });
+                                    }
+                                  }}
+                                  className="text-xs border rounded p-1"
+                                  title="Assigner un examinateur pour tous les modules de cette certification"
+                                >
+                                  <option value="">Assigner...</option>
+                                  {examiners
+                                    .filter(e => e.isActive)
+                                    .map(examiner => (
+                                      <option key={examiner.id} value={examiner.id}>
+                                        {examiner.firstName[0]}. {examiner.lastName}
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                  
+                  {examSubmissionsState.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      Aucune soumission d'examen trouvée
+                    </div>
+                  )}
                 </div>
               </Card>
             </div>

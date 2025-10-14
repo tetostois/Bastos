@@ -44,6 +44,10 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/exam-submissions/submit', [ExamSubmissionController::class, 'submit']);
         Route::get('/exam-submissions', [ExamSubmissionController::class, 'index']);
         Route::get('/exam-submissions/{examId}', [ExamSubmissionController::class, 'show']);
+        
+        // Résultats des examens
+        Route::get('/results', [\App\Http\Controllers\Api\Candidate\ResultsController::class, 'index']);
+        Route::get('/results/{moduleId}', [\App\Http\Controllers\Api\Candidate\ResultsController::class, 'show']);
     });
 
     // Administration (protégé par rôle admin)

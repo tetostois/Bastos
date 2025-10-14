@@ -34,13 +34,21 @@ export interface QuestionWithAnswer {
   is_answered: boolean;
 }
 
-export interface SubmissionDetails {
-  submission: ExaminerSubmission;
-  questions_with_answers: QuestionWithAnswer[];
-  exam_info: {
-    exam_id: string;
-    certification_type: string;
-    module: string;
+export interface SubmissionDetails extends ExaminerSubmission {
+  questions_details: {
+    question_id: string;
+    question_text: string;
+    question_type: string;
+    candidate_answer: any;
+    reference_answer: string;
+    instructions: string;
+    points_possible: number;
+    answer_options: string[];
+  }[];
+  candidate: {
+    first_name: string;
+    last_name: string;
+    email: string;
   };
 }
 
@@ -91,12 +99,11 @@ export class ExaminerService {
     submissionId: string, 
     grades: GradeData[], 
     overallFeedback: string, 
-    finalScore: number
+    totalScore: number
   ): Promise<{ success: boolean; message: string; submission: ExaminerSubmission; score_info: any }> {
     return apiRequest(`/examiner/exam-submissions/${submissionId}/grade`, 'PUT', {
       grades,
-      overall_feedback: overallFeedback,
-      final_score: finalScore
+      total_score: totalScore
     });
   }
 

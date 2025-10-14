@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Clock, CheckCircle, User, MessageSquare, Star, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, Clock, CheckCircle, User, Star, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ExaminerService, ExaminerSubmission, SubmissionDetails } from '../services/examinerService';
 
-interface Submission {
-  id: string;
-  candidateName: string;
-  candidateEmail: string;
-  submittedAt: string;
-  status: 'pending' | 'corrected' | 'under_review' | 'graded';
-  score?: number;
-  answers: { questionId: string; question: string; answer: string; points: number }[];
-}
 
 export const ExaminerDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -28,7 +19,7 @@ export const ExaminerDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
-  const [submissions, setSubmissions] = useState<ExaminerSubmission[]>([]);
+  const [submissions, setSubmissions] = useState<{ [key: string]: ExaminerSubmission[] }>({});
   const [loadingStats, setLoadingStats] = useState(false);
   const [stats, setStats] = useState({
     total_assigned: 0,
@@ -62,7 +53,9 @@ export const ExaminerDashboard: React.FC = () => {
       });
       
       if (response.success) {
-        setSubmissions(response.submissions);
+        // Grouper les soumissions par candidat
+        const groupedSubmissions = groupSubmissionsByCandidate(response.submissions);
+        setSubmissions(groupedSubmissions);
       } else {
         setSubmissionsError('Erreur lors du chargement des soumissions');
       }
@@ -72,6 +65,23 @@ export const ExaminerDashboard: React.FC = () => {
     } finally {
       setLoadingSubmissions(false);
     }
+  };
+
+  // Grouper les soumissions par candidat et certification
+  const groupSubmissionsByCandidate = (submissions: ExaminerSubmission[]) => {
+    const grouped: { [key: string]: ExaminerSubmission[] } = {};
+    
+    submissions.forEach(submission => {
+      // Utiliser candidate_id comme clé pour grouper par candidat
+      const candidateKey = submission.candidate_id;
+      
+      if (!grouped[candidateKey]) {
+        grouped[candidateKey] = [];
+      }
+      grouped[candidateKey].push(submission);
+    });
+    
+    return grouped;
   };
 
   // Charger les statistiques
@@ -103,7 +113,7 @@ export const ExaminerDashboard: React.FC = () => {
         const initialFeedback: Record<string, string> = {};
         
         if (response.submission.questions_details && Array.isArray(response.submission.questions_details)) {
-          response.submission.questions_details.forEach((qa) => {
+          response.submission.questions_details.forEach((qa: any) => {
             if (qa.question_id) {
               initialScores[qa.question_id] = 0;
               initialFeedback[qa.question_id] = '';
@@ -130,8 +140,9 @@ export const ExaminerDashboard: React.FC = () => {
     loadSubmissions();
   }, [statusFilter]);
 
-  const pendingSubmissions = submissions.filter(s => s.status === 'under_review');
-  const correctedSubmissions = submissions.filter(s => s.status === 'graded');
+  // Calculer les statistiques à partir des soumissions groupées
+  const allSubmissions = Object.values(submissions).flat();
+  const correctedSubmissions = allSubmissions.filter(s => s.status === 'graded');
 
   const handleScoreChange = (questionId: string, score: number) => {
     setScores(prev => ({ ...prev, [questionId]: score }));
@@ -155,7 +166,7 @@ export const ExaminerDashboard: React.FC = () => {
       }));
 
       const response = await ExaminerService.gradeSubmission(
-        selectedSubmission.id,
+        selectedSubmission.id.toString(),
         grades,
         'Correction terminée',
         totalScore
@@ -165,10 +176,10 @@ export const ExaminerDashboard: React.FC = () => {
         // Recharger les soumissions et les statistiques
         await loadSubmissions();
         await loadStats();
-        
-        setSelectedSubmission(null);
-        setScores({});
-        setFeedback({});
+
+    setSelectedSubmission(null);
+    setScores({});
+    setFeedback({});
         
         alert('Correction soumise avec succès !');
       } else {
@@ -202,15 +213,26 @@ export const ExaminerDashboard: React.FC = () => {
     alert('Export des corrections en cours...');
   };
   
-  // Filtrer les soumissions
-  const filteredSubmissions = submissions.filter(submission => {
-    const candidateName = submission.candidate_name || '';
-    const candidateEmail = submission.candidate_email || '';
-    const matchesSearch = candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         candidateEmail.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || submission.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Filtrer les soumissions groupées par candidat
+  const filteredSubmissionsByCandidate = Object.entries(submissions).map(([candidateId, candidateSubmissions]) => {
+    const filtered = candidateSubmissions.filter(submission => {
+      const candidateName = submission.candidate_name || '';
+      const candidateEmail = submission.candidate_email || '';
+      const matchesSearch = candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           candidateEmail.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || submission.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+    
+    return { candidateId, submissions: filtered };
+  }).filter(candidate => candidate.submissions.length > 0);
+
+  // Noms des modules pour l'affichage
+  const moduleNames: { [key: string]: string } = {
+    'leadership': 'Leadership',
+    'competences_professionnelles': 'Compétences Professionnelles',
+    'entrepreneuriat': 'Entrepreneuriat'
+  };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Date non disponible';
@@ -221,12 +243,12 @@ export const ExaminerDashboard: React.FC = () => {
         return 'Date invalide';
       }
       
-      return new Intl.DateTimeFormat('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
       }).format(date);
     } catch (error) {
       return 'Date invalide';
@@ -241,9 +263,9 @@ export const ExaminerDashboard: React.FC = () => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Dashboard Examinateur
-            </h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Dashboard Examinateur
+          </h1>
             <div className="flex space-x-3">
               <Button
                 variant="secondary"
@@ -326,7 +348,7 @@ export const ExaminerDashboard: React.FC = () => {
           <div className="lg:col-span-1 space-y-6">
             <Card>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-900 mb-4">Corrections en attente</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Corrections en attente</h3>
                 <div className="flex space-x-2">
                   <input
                     type="text"
@@ -357,31 +379,81 @@ export const ExaminerDashboard: React.FC = () => {
                   {submissionsError}
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {filteredSubmissions.filter(s => s.status === 'under_review').map(submission => (
-                    <div
-                      key={submission.id}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedSubmission?.id === submission.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => loadSubmissionDetails(submission.id)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <User className="h-5 w-5 text-gray-400" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {submission.candidate_name || 'Candidat inconnu'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatDate(submission.submitted_at)}
-                          </p>
+                <div className="space-y-4">
+                  {filteredSubmissionsByCandidate.map(({ candidateId, submissions: candidateSubmissions }) => {
+                    const firstSubmission = candidateSubmissions[0];
+                    const pendingSubmissions = candidateSubmissions.filter(s => s.status === 'under_review');
+                    
+                    if (pendingSubmissions.length === 0) return null;
+                    
+                    return (
+                      <div key={candidateId} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">
+                              {firstSubmission.candidate_name || 'Candidat inconnu'}
+                            </h4>
+                            <p className="text-sm text-gray-500">
+                              {firstSubmission.candidate_email || ''}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-gray-600">
+                              {formatDate(firstSubmission.submitted_at || '')}
+                            </p>
+                            <span className="text-xs text-blue-600">
+                              {candidateSubmissions.length} module(s)
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Afficher les modules de ce candidat */}
+                        <div className="space-y-2">
+                          {candidateSubmissions.map(submission => {
+                            // Extraire le module de l'exam_id
+                            const moduleMatch = submission.exam_id.match(/exam-.*?-(.*?)$/);
+                            const moduleId = moduleMatch ? moduleMatch[1] : 'unknown';
+                            
+                            return (
+                              <div
+                                key={submission.id}
+                                className={`p-2 border rounded cursor-pointer transition-colors ${
+                                  selectedSubmission?.id === submission.id
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                                onClick={() => loadSubmissionDetails(submission.id.toString())}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-2">
+                                    <User className="h-4 w-4 text-gray-400" />
+                                    <div>
+                                      <p className="font-medium text-gray-900 text-sm">
+                                        {moduleNames[moduleId] || moduleId}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Status: {submission.status === 'under_review' ? 'En attente' : 'Corrigé'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      submission.status === 'under_review' 
+                                        ? 'bg-orange-100 text-orange-800' 
+                                        : 'bg-green-100 text-green-800'
+                                    }`}>
+                                      {submission.status === 'under_review' ? 'À corriger' : 'Corrigé'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {filteredSubmissions.filter(s => s.status === 'under_review').length === 0 && (
+                    );
+                  })}
+                  {filteredSubmissionsByCandidate.length === 0 && (
                     <p className="text-gray-500 text-center py-4">
                       Aucune correction en attente
                     </p>
@@ -392,30 +464,59 @@ export const ExaminerDashboard: React.FC = () => {
 
             <Card>
               <h3 className="font-semibold text-gray-900 mb-4">Récemment corrigés</h3>
-              <div className="space-y-3">
-                {filteredSubmissions.filter(s => s.status === 'graded').slice(0, 5).map(submission => (
-                  <div
-                    key={submission.id}
-                    className="p-3 border border-gray-200 rounded-lg"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {submission.candidate_name || 'Candidat inconnu'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(submission.submitted_at)}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Star className="h-4 w-4 text-yellow-500" />
-                        <span className="font-bold text-green-600">
-                          {submission.total_score || 0}/100
+              <div className="space-y-4">
+                {filteredSubmissionsByCandidate.map(({ candidateId, submissions: candidateSubmissions }) => {
+                  const gradedSubmissions = candidateSubmissions.filter(s => s.status === 'graded');
+                  if (gradedSubmissions.length === 0) return null;
+                  
+                  const firstSubmission = candidateSubmissions[0];
+                  
+                  return (
+                    <div key={candidateId} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-700 text-sm">
+                          {firstSubmission.candidate_name || 'Candidat inconnu'}
+                        </h4>
+                        <span className="text-xs text-green-600">
+                          {gradedSubmissions.length}/3 modules corrigés
                         </span>
                       </div>
+                      <div className="space-y-1">
+                        {gradedSubmissions.map(submission => {
+                          const moduleMatch = submission.exam_id.match(/exam-.*?-(.*?)$/);
+                          const moduleId = moduleMatch ? moduleMatch[1] : 'unknown';
+                          
+                          return (
+                            <div
+                              key={submission.id}
+                              className="p-2 border border-gray-100 rounded flex items-center justify-between"
+                            >
+                              <div>
+                                <p className="font-medium text-gray-900 text-xs">
+                                  {moduleNames[moduleId] || moduleId}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatDate(submission.submitted_at || '')}
+                                </p>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Star className="h-3 w-3 text-yellow-500" />
+                                <span className="font-bold text-green-600 text-xs">
+                                  {submission.total_score || 0}/100
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                {correctedSubmissions.length === 0 && (
+                  <p className="text-gray-500 text-center py-4 text-sm">
+                    Aucune correction terminée
+                  </p>
+                )}
               </div>
             </Card>
           </div>
@@ -445,7 +546,7 @@ export const ExaminerDashboard: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-gray-600">Soumis le :</span>
-                      <span className="ml-2 font-medium">{formatDate(selectedSubmission.submitted_at)}</span>
+                      <span className="ml-2 font-medium">{formatDate(selectedSubmission.submitted_at || '')}</span>
                     </div>
                     <div>
                       <span className="text-gray-600">Questions :</span>
@@ -455,7 +556,7 @@ export const ExaminerDashboard: React.FC = () => {
                 </div>
 
                 <div className="space-y-6 mb-6">
-                  {selectedSubmission.questions_details?.map((qa, index) => (
+                  {selectedSubmission.questions_details?.map((qa: any, index: number) => (
                     <div key={qa.question_id} className="border border-gray-200 rounded-lg p-4">
                       <div className="mb-3">
                         <h4 className="font-medium text-gray-900 mb-2">
@@ -528,7 +629,7 @@ export const ExaminerDashboard: React.FC = () => {
                     <div className="flex items-center space-x-4">
                       <span className="text-lg font-medium text-gray-900">Score total :</span>
                       <span className="text-2xl font-bold text-blue-600">
-                        {Object.values(scores).reduce((sum, score) => sum + score, 0)} / {selectedSubmission.questions_details?.reduce((sum, qa) => sum + qa.points_possible, 0) || 0}
+                        {Object.values(scores).reduce((sum, score) => sum + score, 0)} / {selectedSubmission.questions_details?.reduce((sum: number, qa: any) => sum + qa.points_possible, 0) || 0}
                       </span>
                     </div>
                   </div>
@@ -542,7 +643,7 @@ export const ExaminerDashboard: React.FC = () => {
                     </Button>
                     <Button
                       onClick={handleSubmitCorrection}
-                      disabled={selectedSubmission.questions_details?.some(qa => scores[qa.question_id] === undefined) || false}
+                      disabled={selectedSubmission.questions_details?.some((qa: any) => scores[qa.question_id] === undefined) || false}
                       className="flex items-center space-x-2"
                     >
                       <CheckCircle className="h-4 w-4" />

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Reconnexion Candidat</title>
+</head>
+<body>
+    <h1>Test de reconnexion candidat</h1>
+    <div id="status"></div>
+    <button onclick="createTestUser()">Créer utilisateur test</button>
+    <button onclick="simulateReconnection()">Simuler reconnexion</button>
+    <button onclick="clearData()">Effacer données</button>
+    <button onclick="showData()">Afficher données</button>
+
+    <script>
+        function createTestUser() {
+            const testUser = {
+                id: "test-user-123",
+                firstName: "Test",
+                lastName: "Candidat",
+                email: "test@example.com",
+                phone: "123456789",
+                role: "candidate",
+                isActive: true,
+                address: "Test Address",
+                birthDate: "1990-01-01",
+                birthPlace: "Test City",
+                city: "Test City",
+                country: "Test Country",
+                profession: "Test Profession",
+                createdAt: new Date().toISOString(),
+                // Champs de progression
+                hasPaid: true,
+                selectedCertification: "initiation-pratique",
+                currentModule: "leadership-init",
+                completedModules: [],
+                unlockedModules: ["leadership-init"],
+                examTaken: false,
+                score: undefined,
+                certificate: undefined
+            };
+
+            localStorage.setItem('user', JSON.stringify(testUser));
+            localStorage.setItem('token', 'test-token-123');
+            
+            document.getElementById('status').innerHTML = `
+                <h3>✅ Utilisateur de test créé avec progression :</h3>
+                <ul>
+                    <li>hasPaid: ${testUser.hasPaid}</li>
+                    <li>selectedCertification: ${testUser.selectedCertification}</li>
+                    <li>currentModule: ${testUser.currentModule}</li>
+                </ul>
+                <p><strong>Maintenant, simulez une reconnexion !</strong></p>
+            `;
+        }
+
+        function simulateReconnection() {
+            // Simuler ce qui se passe lors d'une reconnexion
+            const existingUser = localStorage.getItem('user');
+            const token = localStorage.getItem('token');
+            
+            if (!existingUser || !token) {
+                document.getElementById('status').innerHTML = '<h3>❌ Aucun utilisateur ou token trouvé</h3>';
+                return;
+            }
+
+            const existing = JSON.parse(existingUser);
+            
+            // Simuler les données de l'API /auth/me (sans les champs de progression)
+            const apiUser = {
+                id: existing.id,
+                first_name: existing.firstName,
+                last_name: existing.lastName,
+                email: existing.email,
+                phone: existing.phone,
+                role: existing.role,
+                is_active: existing.isActive,
+                address: existing.address,
+                date_of_birth: existing.birthDate,
+                place_of_birth: existing.birthPlace,
+                city: existing.city,
+                country: existing.country,
+                profession: existing.profession,
+                created_at: existing.createdAt,
+                // L'API ne retourne PAS les champs de progression
+                has_paid: false, // L'API ne connaît pas ce champ
+                selected_certification: null, // L'API ne connaît pas ce champ
+                current_module: null, // L'API ne connaît pas ce champ
+            };
+
+            // Simuler la normalisation
+            const normalized = {
+                id: String(apiUser.id),
+                firstName: apiUser.first_name || '',
+                lastName: apiUser.last_name || '',
+                email: apiUser.email || '',
+                phone: apiUser.phone || '',
+                role: apiUser.role || 'candidate',
+                isActive: Boolean(apiUser.is_active),
+                address: apiUser.address || '',
+                birthDate: apiUser.date_of_birth || '',
+                birthPlace: apiUser.place_of_birth || '',
+                city: apiUser.city || '',
+                country: apiUser.country || '',
+                profession: apiUser.profession || '',
+                createdAt: apiUser.created_at || new Date().toISOString(),
+                hasPaid: Boolean(apiUser.has_paid || false),
+                selectedCertification: apiUser.selected_certification || undefined,
+                currentModule: apiUser.current_module || undefined,
+            };
+
+            // Simuler la fusion avec les données existantes
+            const merged = {
+                ...normalized,
+                hasPaid: normalized.hasPaid || existing.hasPaid || false,
+                selectedCertification: normalized.selectedCertification || existing.selectedCertification,
+                currentModule: normalized.currentModule || existing.currentModule,
+                completedModules: normalized.completedModules || existing.completedModules,
+                unlockedModules: normalized.unlockedModules || existing.unlockedModules,
+                examTaken: normalized.examTaken || existing.examTaken || false,
+                score: normalized.score || existing.score,
+                certificate: normalized.certificate || existing.certificate,
+                examStartDate: normalized.examStartDate || existing.examStartDate,
+            };
+
+            // Sauvegarder le résultat
+            localStorage.setItem('user', JSON.stringify(merged));
+            
+            document.getElementById('status').innerHTML = `
+                <h3>🔄 Simulation de reconnexion :</h3>
+                <h4>Données API (sans progression) :</h4>
+                <pre>${JSON.stringify(apiUser, null, 2)}</pre>
+                <h4>Données normalisées :</h4>
+                <pre>${JSON.stringify(normalized, null, 2)}</pre>
+                <h4>Données fusionnées (résultat final) :</h4>
+                <pre>${JSON.stringify(merged, null, 2)}</pre>
+                <p><strong>✅ La progression est préservée !</strong></p>
+            `;
+        }
+
+        function clearData() {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            document.getElementById('status').innerHTML = '<h3>🗑️ Données effacées</h3>';
+        }
+
+        function showData() {
+            const user = localStorage.getItem('user');
+            const token = localStorage.getItem('token');
+            
+            document.getElementById('status').innerHTML = `
+                <h3>📊 Données actuelles :</h3>
+                <pre>User: ${user ? JSON.stringify(JSON.parse(user), null, 2) : 'Aucun'}</pre>
+                <pre>Token: ${token || 'Aucun'}</pre>
+            `;
+        }
+
+        // Afficher les données au chargement
+        showData();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Chronomètres d'Examen</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .timer-display {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .timer-box {
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+            min-width: 150px;
+        }
+        .timer-box.total {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+        }
+        .timer-box.question {
+            background-color: #fff3e0;
+            border-color: #ff9800;
+        }
+        .timer-box.warning {
+            background-color: #ffebee;
+            border-color: #f44336;
+        }
+        .timer-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .timer-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .question-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #2196f3;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-success {
+            background-color: #4caf50;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.active {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test des Chronomètres d'Examen</h1>
+        
+        <div class="status" id="examStatus">
+            Examen non démarré
+        </div>
+        
+        <div class="timer-display">
+            <div class="timer-box total">
+                <div class="timer-label">Temps Total Restant</div>
+                <div class="timer-value" id="totalTime">72:00:00</div>
+            </div>
+            <div class="timer-box question" id="questionTimerBox">
+                <div class="timer-label">Temps Question</div>
+                <div class="timer-value" id="questionTime">0:00</div>
+            </div>
+        </div>
+        
+        <div class="question-info">
+            <h3>Question <span id="currentQuestion">1</span> / <span id="totalQuestions">5</span></h3>
+            <p><strong>Temps alloué:</strong> <span id="questionTimeLimit">60</span> secondes</p>
+            <p><strong>Type:</strong> <span id="questionType">QCM</span></p>
+            <p><strong>Points:</strong> <span id="questionPoints">1</span></p>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="startExam()">Démarrer l'Examen</button>
+            <button class="btn btn-secondary" onclick="nextQuestion()">Question Suivante</button>
+            <button class="btn btn-secondary" onclick="previousQuestion()">Question Précédente</button>
+            <button class="btn btn-success" onclick="submitAnswer()">Soumettre Réponse</button>
+            <button class="btn btn-danger" onclick="endExam()">Terminer l'Examen</button>
+        </div>
+        
+        <div class="log" id="log">
+            <div>Log des événements:</div>
+        </div>
+    </div>
+
+    <script>
+        // Simulation des données d'examen
+        const examData = {
+            questions: [
+                { id: 1, timeLimit: 60, type: 'QCM', points: 1 },
+                { id: 2, timeLimit: 45, type: 'QCM', points: 2 },
+                { id: 3, timeLimit: 90, type: 'Texte', points: 3 },
+                { id: 4, timeLimit: 30, type: 'QCM', points: 1 },
+                { id: 5, timeLimit: 120, type: 'Texte', points: 5 }
+            ],
+            totalDuration: 3 * 24 * 60 * 60 * 1000 // 3 jours en millisecondes
+        };
+
+        let examState = {
+            isActive: false,
+            currentQuestionIndex: 0,
+            startTime: null,
+            questionStartTime: null,
+            totalTimer: null,
+            questionTimer: null
+        };
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function formatQuestionTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateTotalTimer() {
+            if (!examState.isActive || !examState.startTime) return;
+            
+            const now = new Date();
+            const elapsed = now.getTime() - examState.startTime.getTime();
+            const remaining = Math.max(0, examData.totalDuration - elapsed);
+            const remainingSeconds = Math.floor(remaining / 1000);
+            
+            document.getElementById('totalTime').textContent = formatTime(remainingSeconds);
+            
+            if (remaining <= 0) {
+                log('⏰ TEMPS TOTAL ÉCOULÉ - Examen terminé automatiquement');
+                endExam();
+            }
+        }
+
+        function updateQuestionTimer() {
+            if (!examState.isActive || !examState.questionStartTime) return;
+            
+            const currentQuestion = examData.questions[examState.currentQuestionIndex];
+            if (!currentQuestion) return;
+            
+            const now = new Date();
+            const elapsed = now.getTime() - examState.questionStartTime.getTime();
+            const remaining = Math.max(0, (currentQuestion.timeLimit * 1000) - elapsed);
+            const remainingSeconds = Math.floor(remaining / 1000);
+            
+            const questionTimeElement = document.getElementById('questionTime');
+            const questionTimerBox = document.getElementById('questionTimerBox');
+            
+            questionTimeElement.textContent = formatQuestionTime(remainingSeconds);
+            
+            // Changer la couleur si moins de 30 secondes
+            if (remainingSeconds <= 30) {
+                questionTimerBox.className = 'timer-box question warning';
+            } else {
+                questionTimerBox.className = 'timer-box question';
+            }
+            
+            if (remaining <= 0) {
+                log(`⏰ Temps écoulé pour la question ${examState.currentQuestionIndex + 1}`);
+                handleQuestionTimeout();
+            }
+        }
+
+        function handleQuestionTimeout() {
+            log(`📝 Sauvegarde réponse vide pour la question ${examState.currentQuestionIndex + 1}`);
+            
+            if (examState.currentQuestionIndex < examData.questions.length - 1) {
+                nextQuestion();
+            } else {
+                log('🏁 Dernière question terminée - Soumission du module');
+                endExam();
+            }
+        }
+
+        function startExam() {
+            examState.isActive = true;
+            examState.startTime = new Date();
+            examState.questionStartTime = new Date();
+            
+            document.getElementById('examStatus').textContent = 'Examen en cours';
+            document.getElementById('examStatus').className = 'status active';
+            
+            // Démarrer les chronomètres
+            examState.totalTimer = setInterval(updateTotalTimer, 1000);
+            examState.questionTimer = setInterval(updateQuestionTimer, 1000);
+            
+            updateQuestionInfo();
+            log('🚀 Examen démarré');
+        }
+
+        function nextQuestion() {
+            if (examState.currentQuestionIndex < examData.questions.length - 1) {
+                examState.currentQuestionIndex++;
+                examState.questionStartTime = new Date();
+                updateQuestionInfo();
+                log(`➡️ Passage à la question ${examState.currentQuestionIndex + 1}`);
+            }
+        }
+
+        function previousQuestion() {
+            if (examState.currentQuestionIndex > 0) {
+                examState.currentQuestionIndex--;
+                examState.questionStartTime = new Date();
+                updateQuestionInfo();
+                log(`⬅️ Retour à la question ${examState.currentQuestionIndex + 1}`);
+            }
+        }
+
+        function submitAnswer() {
+            const currentQuestion = examData.questions[examState.currentQuestionIndex];
+            log(`✅ Réponse soumise pour la question ${examState.currentQuestionIndex + 1} (${currentQuestion.type})`);
+            
+            if (examState.currentQuestionIndex < examData.questions.length - 1) {
+                nextQuestion();
+            } else {
+                log('🏁 Toutes les questions répondues - Soumission du module');
+                endExam();
+            }
+        }
+
+        function endExam() {
+            examState.isActive = false;
+            
+            if (examState.totalTimer) {
+                clearInterval(examState.totalTimer);
+            }
+            if (examState.questionTimer) {
+                clearInterval(examState.questionTimer);
+            }
+            
+            document.getElementById('examStatus').textContent = 'Examen terminé';
+            document.getElementById('examStatus').className = 'status inactive';
+            
+            log('🏁 Examen terminé');
+        }
+
+        function updateQuestionInfo() {
+            const currentQuestion = examData.questions[examState.currentQuestionIndex];
+            if (!currentQuestion) return;
+            
+            document.getElementById('currentQuestion').textContent = examState.currentQuestionIndex + 1;
+            document.getElementById('totalQuestions').textContent = examData.questions.length;
+            document.getElementById('questionTimeLimit').textContent = currentQuestion.timeLimit;
+            document.getElementById('questionType').textContent = currentQuestion.type;
+            document.getElementById('questionPoints').textContent = currentQuestion.points;
+            
+            // Redémarrer le chronomètre de la question
+            examState.questionStartTime = new Date();
+        }
+
+        // Initialiser l'affichage
+        updateQuestionInfo();
+        log('📋 Interface de test initialisée');
+    </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Clock, CreditCard, FileText, BookOpen, AlertCircle, Download, Play } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,21 +10,28 @@ import { Button } from '../components/ui/Button';
 import { PaymentForm } from '../components/payment/PaymentForm';
 import { Input } from '../components/ui/Input';
 import { getCertificationById } from '../components/data/certifications';
+import { CandidateService, CorrectionDetails } from '../services/candidateService';
+import ExamInformation from '../components/ExamInformation';
 
 
 export const CandidateDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { startModule, isExamActive } = useExam();
   const [showPayment, setShowPayment] = useState(false);
   const [paymentCompleted, setPaymentCompleted] = useState(user?.hasPaid || false);
   const [showExamInstructions, setShowExamInstructions] = useState(false);
+  const [showExamInformation, setShowExamInformation] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [showCertificationSelector, setShowCertificationSelector] = useState(!user?.selectedCertification);
+  const [showCertificationSelector, setShowCertificationSelector] = useState(false);
   const [selectedCertification, setSelectedCertification] = useState(user?.selectedCertification);
   const [selectedPaymentType, setSelectedPaymentType] = useState<'full' | 'per-module'>('full');
   const [selectedModuleForPayment, setSelectedModuleForPayment] = useState<string>('');
+  const [resultsView, setResultsView] = useState<'results' | 'correction'>('results');
+  const [corrections, setCorrections] = useState<CorrectionDetails[]>([]);
+  const [loadingCorrections, setLoadingCorrections] = useState(false);
+  const moduleProgressRef = useRef<HTMLDivElement | null>(null);
   
   const [profileForm, setProfileForm] = useState({
     firstName: user?.firstName || '',
@@ -48,14 +55,30 @@ export const CandidateDashboard: React.FC = () => {
   const handlePaymentSuccess = () => {
     setPaymentCompleted(true);
     setShowPayment(false);
-    // Mise à jour du statut utilisateur
-    user.hasPaid = true;
+    // Mise à jour persistante du statut utilisateur
+    updateUser({ hasPaid: true });
+    // Afficher la page d'information sur l'examen
+    setShowExamInformation(true);
   };
 
   const handleCertificationSelect = (certification: any) => {
     setSelectedCertification(certification.id);
-    user.selectedCertification = certification.id;
+    updateUser({ selectedCertification: certification.id });
     setShowCertificationSelector(false);
+  };
+
+  const handleExamInformationContinue = () => {
+    setShowExamInformation(false);
+    // Marquer que l'utilisateur a vu la page d'information
+    if (user?.id) {
+      localStorage.setItem(`exam-info-seen-${user.id}`, 'true');
+    }
+    // L'utilisateur peut maintenant accéder aux modules
+  };
+
+  const handleExamInformationBack = () => {
+    setShowExamInformation(false);
+    setShowPayment(true);
   };
 
 
@@ -79,9 +102,7 @@ export const CandidateDashboard: React.FC = () => {
     startModule(currentCertification.id, moduleId);
     
     // Mettre à jour l'état de l'utilisateur pour refléter le module en cours
-    if (user) {
-      user.currentModule = moduleId;
-    }
+    updateUser({ currentModule: moduleId });
     
     // Rediriger vers la page d'examen
     navigate('/exam');
@@ -115,6 +136,43 @@ export const CandidateDashboard: React.FC = () => {
     setShowSupportModal(false);
   };
 
+  // Charger les corrections
+  const loadCorrections = async () => {
+    if (user?.score === undefined) return;
+    
+    try {
+      setLoadingCorrections(true);
+      const response = await CandidateService.getCorrections();
+      
+      if (response.success) {
+        // Aplatir toutes les corrections de toutes les soumissions
+        const allCorrections: CorrectionDetails[] = [];
+        response.corrections.forEach((submission: any) => {
+          allCorrections.push(...submission.questions);
+        });
+        setCorrections(allCorrections);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des corrections:', error);
+    } finally {
+      setLoadingCorrections(false);
+    }
+  };
+
+  // Charger les corrections quand l'utilisateur a un score
+  useEffect(() => {
+    if (user?.score !== undefined) {
+      loadCorrections();
+    }
+  }, [user?.score]);
+
+  // Réinitialiser la vue à "results" quand les corrections changent
+  useEffect(() => {
+    if (corrections.length === 0) {
+      setResultsView('results');
+    }
+  }, [corrections]);
+
   const steps = [
     {
       id: 'payment',
@@ -146,13 +204,71 @@ export const CandidateDashboard: React.FC = () => {
     }
   ];
 
+  // Initialiser le sélecteur de certification au chargement
+  useEffect(() => {
+    if (user && !user.selectedCertification) {
+      setShowCertificationSelector(true);
+    }
+  }, [user]);
+
+  // Synchroniser les états locaux avec les données utilisateur
+  useEffect(() => {
+    if (user) {
+      console.log('🔄 [CandidateDashboard] Synchronisation des états utilisateur:', {
+        hasPaid: user.hasPaid,
+        selectedCertification: user.selectedCertification,
+        currentModule: user.currentModule
+      });
+      setPaymentCompleted(user.hasPaid || false);
+      setSelectedCertification(user.selectedCertification);
+      
+      // IMPORTANT: Ne jamais réafficher le sélecteur de certification une fois qu'elle est choisie
+      // Même si l'utilisateur se reconnecte, s'il a déjà une certification, ne pas réafficher le sélecteur
+      if (user.selectedCertification) {
+        setShowCertificationSelector(false);
+      }
+    }
+  }, [user]);
+
+  // Afficher la page d'information sur l'examen si l'utilisateur a payé mais n'a pas encore vu cette page
+  useEffect(() => {
+    if (user?.hasPaid && user?.selectedCertification && !showExamInformation) {
+      // Vérifier si l'utilisateur a déjà vu la page d'information
+      const hasSeenExamInfo = localStorage.getItem(`exam-info-seen-${user.id}`);
+      if (!hasSeenExamInfo) {
+        setShowExamInformation(true);
+      }
+    }
+  }, [user?.hasPaid, user?.selectedCertification, user?.id, showExamInformation]);
+
+  // Après paiement et certification choisie, amener l'utilisateur directement aux modules
+  useEffect(() => {
+    if (paymentCompleted && currentCertification && moduleProgressRef.current) {
+      // Petit délai pour laisser le DOM se peindre
+      setTimeout(() => {
+        moduleProgressRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [paymentCompleted, currentCertification]);
+
   if (isExamActive) {
     // L'interface d'examen sera affichée par App.tsx
     return null;
   }
 
-  // Afficher le sélecteur de certification si aucune n'est sélectionnée
-  if (showCertificationSelector) {
+  // Afficher le sélecteur de certification UNIQUEMENT si aucune n'est sélectionnée
+  // Une fois qu'une certification est choisie, on ne revient JAMAIS à cette interface
+  console.log('🎯 [CandidateDashboard] État des conditions:', {
+    showCertificationSelector,
+    paymentCompleted,
+    selectedCertification,
+    currentCertification: !!currentCertification,
+    userHasPaid: user?.hasPaid,
+    userSelectedCert: user?.selectedCertification
+  });
+
+  // SEULEMENT si l'utilisateur n'a JAMAIS choisi de certification
+  if (!user?.selectedCertification) {
     return (
       <div className="min-h-screen bg-gray-50 py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -162,6 +278,17 @@ export const CandidateDashboard: React.FC = () => {
           />
         </div>
       </div>
+    );
+  }
+
+  // Afficher la page d'information sur l'examen après le paiement
+  if (showExamInformation && user?.hasPaid) {
+    return (
+      <ExamInformation
+        certification={user.selectedCertification || ''}
+        onContinue={handleExamInformationContinue}
+        onBack={handleExamInformationBack}
+      />
     );
   }
 
@@ -224,6 +351,7 @@ export const CandidateDashboard: React.FC = () => {
 
         {/* Certification Progress */}
         {currentCertification && paymentCompleted && (
+          <div ref={moduleProgressRef}>
           <ModuleProgress
             certification={currentCertification}
             completedModules={user.completedModules || []}
@@ -234,12 +362,14 @@ export const CandidateDashboard: React.FC = () => {
             examStartDate={user.examStartDate}
             hasPaid={paymentCompleted}
           />
+          </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {!paymentCompleted && (
+            {/* Interface de paiement - UNIQUEMENT si l'utilisateur n'a JAMAIS payé */}
+            {!user?.hasPaid && (
               <Card>
                 <div className="flex items-start space-x-4">
                   <div className="p-3 bg-orange-100 rounded-lg">
@@ -330,6 +460,18 @@ export const CandidateDashboard: React.FC = () => {
                     <p className="text-gray-600 mb-4">
                       Votre paiement a été confirmé. Vous pouvez maintenant commencer les modules de certification.
                     </p>
+                    {user?.currentModule && (
+                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-800">
+                          Vous avez laissé le module en cours: <strong>{user.currentModule}</strong>
+                        </p>
+                        <div className="mt-2">
+                          <Button onClick={() => handleContinueModule(user.currentModule as string)} className="bg-blue-600 hover:bg-blue-700">
+                            Continuer là où vous vous êtes arrêté
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                       <div className="flex items-center space-x-2">
                         <AlertCircle className="h-5 w-5 text-yellow-600" />
@@ -387,26 +529,121 @@ export const CandidateDashboard: React.FC = () => {
                     <FileText className="h-6 w-6 text-green-600" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      Résultats disponibles
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                      Félicitations ! Vos modules ont été corrigés et votre certificat est prêt.
-                    </p>
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-green-800 font-medium">Score obtenu :</span>
-                        <span className="text-2xl font-bold text-green-600">{user.score}/100</span>
-                      </div>
-                      <p className="text-green-700 text-sm">
-                        {user.score >= 70 ? 'Certification réussie !' : 'Score insuffisant pour la certification'}
-                      </p>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Résultats disponibles
+                      </h3>
+                      {corrections.length > 0 && (
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant={resultsView === 'results' ? 'primary' : 'secondary'}
+                            onClick={() => setResultsView('results')}
+                          >
+                            Résultats
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={resultsView === 'correction' ? 'primary' : 'secondary'}
+                            onClick={() => setResultsView('correction')}
+                          >
+                            Correction
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {user.score >= 70 && (
-                      <Button className="flex items-center space-x-2">
-                        <Download className="h-4 w-4" />
-                        <span>Télécharger le certificat</span>
-                      </Button>
+
+                    {resultsView === 'results' && (
+                      <>
+                        <p className="text-gray-600 mb-4">
+                          Félicitations ! Vos modules ont été corrigés et votre certificat est prêt.
+                        </p>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-green-800 font-medium">Score obtenu :</span>
+                            <span className="text-2xl font-bold text-green-600">{user.score}/100</span>
+                          </div>
+                          <p className="text-green-700 text-sm">
+                            {user.score >= 70 ? 'Certification réussie !' : 'Score insuffisant pour la certification'}
+                          </p>
+                        </div>
+                        {user.score >= 70 && (
+                          <Button className="flex items-center space-x-2">
+                            <Download className="h-4 w-4" />
+                            <span>Télécharger le certificat</span>
+                          </Button>
+                        )}
+                      </>
+                    )}
+
+                    {resultsView === 'correction' && corrections.length > 0 && (
+                      <div className="space-y-4">
+                        <p className="text-gray-600 mb-4">
+                          Voici les commentaires détaillés de l'examinateur pour chaque question :
+                        </p>
+                        
+                        {loadingCorrections ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <span className="ml-2 text-gray-600">Chargement des corrections...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {corrections.map((correction, index) => (
+                              <div key={correction.question_id} className="border border-gray-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="font-medium text-gray-900">Question {index + 1}</h4>
+                                  <span className="text-sm text-gray-500">
+                                    {correction.score}/{correction.max_score} points
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mb-2">
+                                  <strong>Votre réponse :</strong> "{correction.candidate_answer}"
+                                </p>
+                                {correction.feedback && (
+                                  <div className={`border rounded p-3 ${
+                                    correction.score === correction.max_score 
+                                      ? 'bg-green-50 border-green-200' 
+                                      : 'bg-blue-50 border-blue-200'
+                                  }`}>
+                                    <p className={`text-sm ${
+                                      correction.score === correction.max_score 
+                                        ? 'text-green-800' 
+                                        : 'text-blue-800'
+                                    }`}>
+                                      <strong>Commentaire de l'examinateur :</strong> {correction.feedback}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">
+                            <strong>Note :</strong> Ces commentaires vous aideront à comprendre vos points forts et les domaines à améliorer. 
+                            Continuez à développer vos compétences !
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Message quand il n'y a pas encore de corrections */}
+                    {user.score !== undefined && corrections.length === 0 && !loadingCorrections && (
+                      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-center">
+                          <Clock className="h-5 w-5 text-yellow-600 mr-2" />
+                          <div>
+                            <p className="text-sm text-yellow-800 font-medium">
+                              Corrections en cours
+                            </p>
+                            <p className="text-xs text-yellow-700 mt-1">
+                              L'examinateur est en train de corriger votre copie. Les commentaires détaillés apparaîtront ici une fois la correction terminée.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -419,13 +656,16 @@ export const CandidateDashboard: React.FC = () => {
             <Card>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-900">Certification</h3>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setShowCertificationSelector(true)}
-                >
-                  Changer
-                </Button>
+                {/* Bouton "Changer" masqué une fois qu'une certification est choisie */}
+                {!user?.selectedCertification && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowCertificationSelector(true)}
+                  >
+                    Changer
+                  </Button>
+                )}
               </div>
               {currentCertification && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">

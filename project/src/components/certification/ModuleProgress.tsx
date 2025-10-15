@@ -81,6 +81,32 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
     reloadProgress();
   }, [certification.id]);
 
+  // Écouter les changements dans localStorage pour forcer le re-rendu
+  useEffect(() => {
+    const handleStorageChange = () => {
+      // Forcer le re-rendu quand les modules complétés changent
+      setModuleProgress(prev => [...prev]);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Écouter aussi les changements de localStorage dans le même onglet
+    const interval = setInterval(() => {
+      const currentCompleted = JSON.parse(localStorage.getItem('completed-modules') || '[]');
+      const lastCompleted = JSON.parse(sessionStorage.getItem('last-completed-modules') || '[]');
+      
+      if (JSON.stringify(currentCompleted) !== JSON.stringify(lastCompleted)) {
+        sessionStorage.setItem('last-completed-modules', JSON.stringify(currentCompleted));
+        handleStorageChange();
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Polling périodique supprimé pour améliorer l'expérience utilisateur
   // Le rechargement se fait maintenant uniquement via l'événement examSubmitted
 
@@ -89,14 +115,25 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
     const moduleSlug = mapModuleToBackendSlug(module.id);
     const progress = moduleProgress.find(p => p.module_id === moduleSlug);
     
+    // Vérifier aussi les modules complétés localement
+    const localCompletedModules = JSON.parse(localStorage.getItem('completed-modules') || '[]');
+    const isLocallyCompleted = localCompletedModules.includes(module.id);
+    
     if (progress) {
-      return progress.status === 'completed' ? 'completed' :
-             progress.status === 'in_progress' ? 'current' :
-             progress.status === 'unlocked' ? 'available' : 'locked';
+      // Priorité aux données backend, mais considérer aussi les données locales
+      if (progress.status === 'completed' || isLocallyCompleted) {
+        return 'completed';
+      }
+      if (progress.status === 'in_progress' || currentModule === module.id) {
+        return 'current';
+      }
+      if (progress.status === 'unlocked') {
+        return 'available';
+      }
     }
 
     // Fallback sur l'ancienne logique si pas de données backend
-    if (completedModules.includes(module.id)) {
+    if (completedModules.includes(module.id) || isLocallyCompleted) {
       return 'completed';
     }
     if (currentModule === module.id) {
@@ -105,9 +142,24 @@ export const ModuleProgress: React.FC<ModuleProgressProps> = ({
     if (unlockedModules && unlockedModules.includes(module.id)) {
       return 'available';
     }
-    if (index === 0 || completedModules.includes(certification.modules[index - 1].id)) {
+    
+    // Logique de déverrouillage séquentiel
+    if (index === 0) {
+      return 'available'; // Premier module toujours disponible
+    }
+    
+    // Vérifier si le module précédent est complété (backend ou local)
+    const previousModule = certification.modules[index - 1];
+    const previousModuleSlug = mapModuleToBackendSlug(previousModule.id);
+    const previousProgress = moduleProgress.find(p => p.module_id === previousModuleSlug);
+    const isPreviousCompleted = previousProgress?.status === 'completed' || 
+                               completedModules.includes(previousModule.id) ||
+                               localCompletedModules.includes(previousModule.id);
+    
+    if (isPreviousCompleted) {
       return 'available';
     }
+    
     return 'locked';
   };
 

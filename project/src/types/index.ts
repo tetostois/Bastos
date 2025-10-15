@@ -62,6 +62,8 @@ export interface Exam {
   moduleName?: string;
   createdAt?: string;
   updatedAt?: string;
+  timeLimit?: number; // Temps total en secondes
+  totalQuestions?: number; // Nombre total de questions
 }
 
 export interface Question {
@@ -72,6 +74,8 @@ export interface Question {
   correctAnswer?: string | number;
   points: number;
   category: string; // Plus flexible pour différentes catégories
+  timeLimit?: number; // Temps en secondes pour cette question
+  required?: boolean; // Question obligatoire ou non
 }
 
 export interface ExamSubmission {
@@ -130,6 +134,7 @@ export interface AuthContextType {
   register: (userData: Partial<User>, password: string) => Promise<boolean>;
   isLoading: boolean;
   getToken: () => string;
+  updateUser: (updates: Partial<User>) => void;
 }
 
 export interface ExamSession {

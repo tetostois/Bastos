@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page d'Information sur l'Examen</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step {
+            display: flex;
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .step-icon {
+            font-size: 24px;
+            margin-right: 15px;
+            min-width: 30px;
+        }
+        .step-content h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .step-content p {
+            margin: 0 0 10px 0;
+            color: #666;
+        }
+        .step-details {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0 0 0;
+        }
+        .step-details li {
+            padding: 5px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .step-details li:before {
+            content: "✓ ";
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .notes {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .notes h3 {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+        .note-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .note-icon {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        .conditions {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center; color: #333;">Déroulement de l'Examen</h1>
+        <p style="text-align: center; color: #666; font-size: 18px;">
+            Certification : <strong style="color: #007bff;">Initiation Pratique Générale</strong>
+        </p>
+
+        <h2 style="color: #333; margin-top: 30px;">Les 4 étapes de votre parcours d'examen</h2>
+        
+        <div class="step">
+            <div class="step-icon">📚</div>
+            <div class="step-content">
+                <h3>1. Sélection des Modules</h3>
+                <p>Choisissez les modules que vous souhaitez composer selon votre certification.</p>
+                <ul class="step-details">
+                    <li>Chaque certification comprend 3 modules obligatoires</li>
+                    <li>La certification 'Initiation Pratique Générale' permet de choisir un seul module</li>
+                    <li>Vous pouvez composer les modules dans l'ordre de votre choix</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-icon">📝</div>
+            <div class="step-content">
+                <h3>2. Composition de l'Examen</h3>
+                <p>Composez votre examen module par module avec les questions fournies.</p>
+                <ul class="step-details">
+                    <li>Chaque module contient des questions à choix multiples et des questions ouvertes</li>
+                    <li>Vous avez un temps limité pour chaque module</li>
+                    <li>Vos réponses sont sauvegardées automatiquement</li>
+                    <li>Vous pouvez revenir en arrière pour modifier vos réponses</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-icon">👥</div>
+            <div class="step-content">
+                <h3>3. Correction par un Examinateur</h3>
+                <p>Votre copie sera corrigée par un examinateur qualifié.</p>
+                <ul class="step-details">
+                    <li>Un examinateur spécialisé dans votre domaine corrigera votre copie</li>
+                    <li>Chaque question sera notée individuellement</li>
+                    <li>Des commentaires détaillés seront fournis pour chaque réponse</li>
+                    <li>Le processus de correction peut prendre 3-5 jours ouvrés</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-icon">🏆</div>
+            <div class="step-content">
+                <h3>4. Résultats et Certification</h3>
+                <p>Recevez vos résultats et votre certificat de réussite.</p>
+                <ul class="step-details">
+                    <li>Vous recevrez une note globale et par module</li>
+                    <li>Un certificat sera délivré si vous obtenez la note minimale requise</li>
+                    <li>Vous pourrez consulter les corrections détaillées</li>
+                    <li>Votre certificat sera disponible dans votre espace personnel</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="notes">
+            <h3>⚠️ Notes importantes</h3>
+            <div class="note-item">
+                <span class="note-icon">⏰</span>
+                <span>Durée totale estimée : 2-4 heures selon la certification choisie</span>
+            </div>
+            <div class="note-item">
+                <span class="note-icon">⚠️</span>
+                <span>Assurez-vous d'avoir une connexion internet stable pendant l'examen</span>
+            </div>
+            <div class="note-item">
+                <span class="note-icon">✅</span>
+                <span>Vous pouvez interrompre et reprendre l'examen à tout moment</span>
+            </div>
+        </div>
+
+        <div class="conditions">
+            <h3>Conditions d'acceptation</h3>
+            <div class="checkbox-group">
+                <input type="checkbox" id="read-terms">
+                <label for="read-terms">J'ai lu et compris le déroulement de l'examen décrit ci-dessus</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="accept-terms">
+                <label for="accept-terms">J'accepte de respecter les règles et conditions de l'examen</label>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-secondary" onclick="goBack()">← Retour</button>
+            <button class="btn btn-primary" id="continue-btn" disabled onclick="continueExam()">Commencer l'Examen →</button>
+        </div>
+
+        <p id="status" style="text-align: center; color: #666; margin-top: 20px;">
+            Veuillez cocher les cases ci-dessus pour continuer
+        </p>
+    </div>
+
+    <script>
+        const readTermsCheckbox = document.getElementById('read-terms');
+        const acceptTermsCheckbox = document.getElementById('accept-terms');
+        const continueBtn = document.getElementById('continue-btn');
+        const statusP = document.getElementById('status');
+
+        function updateButtonState() {
+            const canContinue = readTermsCheckbox.checked && acceptTermsCheckbox.checked;
+            continueBtn.disabled = !canContinue;
+            
+            if (canContinue) {
+                statusP.textContent = '✅ Vous pouvez maintenant commencer l\'examen !';
+                statusP.style.color = '#28a745';
+            } else {
+                statusP.textContent = 'Veuillez cocher les cases ci-dessus pour continuer';
+                statusP.style.color = '#666';
+            }
+        }
+
+        readTermsCheckbox.addEventListener('change', updateButtonState);
+        acceptTermsCheckbox.addEventListener('change', updateButtonState);
+
+        function goBack() {
+            alert('Retour au paiement');
+        }
+
+        function continueExam() {
+            alert('Redirection vers les modules d\'examen');
+        }
+
+        // Initialiser l'état du bouton
+        updateButtonState();
+    </script>
+</body>
+</html>

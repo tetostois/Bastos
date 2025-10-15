@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Déverrouillage des Modules</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .module {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+        }
+        .module.completed {
+            background-color: #d4edda;
+            border-color: #28a745;
+        }
+        .module.available {
+            background-color: #d1ecf1;
+            border-color: #17a2b8;
+        }
+        .module.locked {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+        }
+        .module.current {
+            background-color: #fff3cd;
+            border-color: #ffc107;
+        }
+        .module-icon {
+            margin-right: 15px;
+            font-size: 24px;
+        }
+        .module-info {
+            flex: 1;
+        }
+        .module-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .module-status {
+            font-size: 14px;
+            color: #666;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: black;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-completed { background-color: #28a745; }
+        .status-available { background-color: #17a2b8; }
+        .status-locked { background-color: #dc3545; }
+        .status-current { background-color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test du Déverrouillage des Modules</h1>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="startTest()">Démarrer le Test</button>
+            <button class="btn btn-success" onclick="completeModule(1)">Compléter Module 1</button>
+            <button class="btn btn-success" onclick="completeModule(2)">Compléter Module 2</button>
+            <button class="btn btn-success" onclick="completeModule(3)">Compléter Module 3</button>
+            <button class="btn btn-warning" onclick="setCurrentModule(1)">Module 1 en cours</button>
+            <button class="btn btn-warning" onclick="setCurrentModule(2)">Module 2 en cours</button>
+            <button class="btn btn-warning" onclick="setCurrentModule(3)">Module 3 en cours</button>
+            <button class="btn btn-danger" onclick="resetTest()">Réinitialiser</button>
+            <button class="btn btn-secondary" onclick="simulateBackendData()">Simuler Données Backend</button>
+        </div>
+        
+        <div id="modulesContainer">
+            <!-- Les modules seront générés ici -->
+        </div>
+        
+        <div class="log" id="log">
+            <div>Log des événements:</div>
+        </div>
+    </div>
+
+    <script>
+        // Simulation des données de certification
+        const certificationData = {
+            id: 'test-certification',
+            modules: [
+                { id: 'module-1', title: 'Module 1: Introduction', description: 'Module d\'introduction' },
+                { id: 'module-2', title: 'Module 2: Intermédiaire', description: 'Module intermédiaire' },
+                { id: 'module-3', title: 'Module 3: Avancé', description: 'Module avancé' }
+            ]
+        };
+
+        // Simulation des données backend
+        let backendProgress = [];
+        let currentModule = null;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function getModuleStatus(module, index) {
+            // Simuler la logique de ModuleProgress
+            const moduleSlug = module.id.replace('module-', 'module_');
+            const progress = backendProgress.find(p => p.module_id === moduleSlug);
+            
+            // Vérifier les modules complétés localement
+            const localCompletedModules = JSON.parse(localStorage.getItem('completed-modules') || '[]');
+            const isLocallyCompleted = localCompletedModules.includes(module.id);
+            
+            if (progress) {
+                if (progress.status === 'completed' || isLocallyCompleted) {
+                    return 'completed';
+                }
+                if (progress.status === 'in_progress' || currentModule === module.id) {
+                    return 'current';
+                }
+                if (progress.status === 'unlocked') {
+                    return 'available';
+                }
+            }
+
+            // Fallback sur la logique locale
+            if (isLocallyCompleted) {
+                return 'completed';
+            }
+            if (currentModule === module.id) {
+                return 'current';
+            }
+            
+            // Logique de déverrouillage séquentiel
+            if (index === 0) {
+                return 'available';
+            }
+            
+            // Vérifier si le module précédent est complété
+            const previousModule = certificationData.modules[index - 1];
+            const previousModuleSlug = previousModule.id.replace('module-', 'module_');
+            const previousProgress = backendProgress.find(p => p.module_id === previousModuleSlug);
+            const isPreviousCompleted = previousProgress?.status === 'completed' || 
+                                     localCompletedModules.includes(previousModule.id);
+            
+            if (isPreviousCompleted) {
+                return 'available';
+            }
+            
+            return 'locked';
+        }
+
+        function renderModules() {
+            const container = document.getElementById('modulesContainer');
+            container.innerHTML = '';
+            
+            certificationData.modules.forEach((module, index) => {
+                const status = getModuleStatus(module, index);
+                const statusText = {
+                    'completed': 'Terminé',
+                    'available': 'Disponible',
+                    'locked': 'Verrouillé',
+                    'current': 'En cours'
+                };
+                
+                const statusIcon = {
+                    'completed': '✅',
+                    'available': '🔓',
+                    'locked': '🔒',
+                    'current': '⏳'
+                };
+                
+                const moduleDiv = document.createElement('div');
+                moduleDiv.className = `module ${status}`;
+                moduleDiv.innerHTML = `
+                    <div class="module-icon">${statusIcon[status]}</div>
+                    <div class="module-info">
+                        <div class="module-title">${module.title}</div>
+                        <div class="module-status">
+                            <span class="status-indicator status-${status}"></span>
+                            ${statusText[status]}
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(moduleDiv);
+            });
+        }
+
+        function completeModule(moduleNumber) {
+            const moduleId = `module-${moduleNumber}`;
+            const completedModules = JSON.parse(localStorage.getItem('completed-modules') || '[]');
+            
+            if (!completedModules.includes(moduleId)) {
+                completedModules.push(moduleId);
+                localStorage.setItem('completed-modules', JSON.stringify(completedModules));
+                log(`✅ Module ${moduleNumber} complété et ajouté au localStorage`);
+                
+                // Déclencher l'événement examSubmitted
+                const event = new CustomEvent('examSubmitted', { 
+                    detail: { 
+                        moduleId: moduleId,
+                        certificationType: 'test_certification',
+                        isModuleSubmission: true
+                    } 
+                });
+                window.dispatchEvent(event);
+                log(`🎯 Événement examSubmitted déclenché pour ${moduleId}`);
+            } else {
+                log(`⚠️ Module ${moduleNumber} déjà complété`);
+            }
+            
+            renderModules();
+        }
+
+        function setCurrentModule(moduleNumber) {
+            currentModule = `module-${moduleNumber}`;
+            log(`⏳ Module ${moduleNumber} défini comme module en cours`);
+            renderModules();
+        }
+
+        function resetTest() {
+            localStorage.removeItem('completed-modules');
+            backendProgress = [];
+            currentModule = null;
+            log('🔄 Test réinitialisé');
+            renderModules();
+        }
+
+        function simulateBackendData() {
+            backendProgress = [
+                { module_id: 'module_1', status: 'completed' },
+                { module_id: 'module_2', status: 'unlocked' },
+                { module_id: 'module_3', status: 'locked' }
+            ];
+            log('🔄 Données backend simulées');
+            renderModules();
+        }
+
+        function startTest() {
+            log('🚀 Test de déverrouillage des modules démarré');
+            log('📋 Instructions:');
+            log('1. Cliquez sur "Compléter Module 1"');
+            log('2. Vérifiez que le Module 2 devient disponible');
+            log('3. Complétez le Module 2');
+            log('4. Vérifiez que le Module 3 devient disponible');
+            renderModules();
+        }
+
+        // Écouter l'événement examSubmitted
+        window.addEventListener('examSubmitted', (event) => {
+            log(`📡 Événement examSubmitted reçu: ${JSON.stringify(event.detail)}`);
+            // Simuler le rechargement de la progression
+            setTimeout(() => {
+                log('🔄 Rechargement de la progression simulé');
+                renderModules();
+            }, 500);
+        });
+
+        // Initialiser l'affichage
+        renderModules();
+        log('📋 Interface de test initialisée');
+    </script>
+</body>
+</html>

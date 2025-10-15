@@ -47,6 +47,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           {moduleId && <p><span className="font-medium">Module:</span> {moduleId}</p>}
           <p className="text-lg font-bold text-green-600">Amount: ${amount}</p>
         </div>
+
       </div>
 
       <div className="mb-6">

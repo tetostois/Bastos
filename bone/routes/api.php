@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\Admin\ExamSubmissionController as AdminExamSubmissi
 use App\Http\Controllers\Api\Examiner\ExamSubmissionController as ExaminerExamSubmissionController;
 use App\Http\Controllers\Api\Candidate\ModuleProgressController;
 use App\Http\Controllers\Api\Candidate\ExamSubmissionController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\WebhookController;
 
 // Routes publiques (sans authentification)
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -21,6 +23,9 @@ Route::get('/activities/recent', [\App\Http\Controllers\Api\ActivityController::
 // Bootstrap: permettre la création du tout premier admin sans auth.
 // La méthode createAdmin elle-même refusera si un admin existe déjà.
 Route::post('/admin/users/create-admin', [AdminUserController::class, 'createAdmin']);
+
+// Routes pour les webhooks (sans authentification)
+Route::post('/payments/pawapay/webhook', [WebhookController::class, 'handlePawaPayWebhook']);
 
 // Routes protégées par JWT (guard api)
 // Routes pour les candidats
@@ -48,6 +53,18 @@ Route::middleware('auth:api')->group(function () {
         // Résultats des examens
         Route::get('/results', [\App\Http\Controllers\Api\Candidate\ResultsController::class, 'index']);
         Route::get('/results/{moduleId}', [\App\Http\Controllers\Api\Candidate\ResultsController::class, 'show']);
+        
+        // Corrections détaillées
+        Route::get('/corrections', [\App\Http\Controllers\Api\Candidate\CorrectionController::class, 'index']);
+        Route::get('/corrections/{submissionId}', [\App\Http\Controllers\Api\Candidate\CorrectionController::class, 'show']);
+    });
+
+    // Routes pour les paiements PawaPay
+    Route::prefix('payments')->group(function () {
+        Route::post('/create', [PaymentController::class, 'createPayment']);
+        Route::get('/{paymentId}/status', [PaymentController::class, 'getPaymentStatus']);
+        Route::get('/user/payments', [PaymentController::class, 'getUserPayments']);
+        Route::post('/{paymentId}/cancel', [PaymentController::class, 'cancelPayment']);
     });
 
     // Administration (protégé par rôle admin)

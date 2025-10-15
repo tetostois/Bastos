@@ -60,6 +60,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // champs facultatifs connus dans l'app
       specialization: raw.specialization ?? undefined,
       experience: raw.experience ?? undefined,
+      // champs de progression
+      hasPaid: Boolean(raw.hasPaid ?? raw.has_paid ?? false),
+      examTaken: Boolean(raw.examTaken ?? raw.exam_taken ?? false),
+      score: raw.score ?? undefined,
+      certificate: raw.certificate ?? undefined,
+      selectedCertification: raw.selectedCertification ?? raw.selected_certification ?? undefined,
+      completedModules: raw.completedModules ?? raw.completed_modules ?? undefined,
+      unlockedModules: raw.unlockedModules ?? raw.unlocked_modules ?? undefined,
+      currentModule: raw.currentModule ?? raw.current_module ?? undefined,
+      examStartDate: raw.examStartDate ?? raw.exam_start_date ?? undefined,
     } as User;
   };
 
@@ -169,15 +179,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return r.json();
         })
         .then(u => { if (u) {
+          console.log('🔄 [AuthContext] Données API /auth/me:', u);
           const normalized = normalizeUser(u);
-          setUser(normalized);
-          localStorage.setItem('user', JSON.stringify(normalized));
+          console.log('🔄 [AuthContext] Données normalisées:', normalized);
+          
+          // Préserver les données de progression existantes si l'API ne les retourne pas
+          const existingUser = localStorage.getItem('user');
+          if (existingUser) {
+            try {
+              const existing = JSON.parse(existingUser);
+              console.log('🔄 [AuthContext] Données existantes localStorage:', existing);
+              
+              const merged = {
+                ...normalized,
+                // PRIORITÉ AUX DONNÉES LOCALES pour les champs de progression
+                // Si l'API retourne des valeurs vides, garder les données locales
+                hasPaid: existing.hasPaid || normalized.hasPaid || false,
+                selectedCertification: existing.selectedCertification || normalized.selectedCertification,
+                currentModule: existing.currentModule || normalized.currentModule,
+                completedModules: existing.completedModules || normalized.completedModules,
+                unlockedModules: existing.unlockedModules || normalized.unlockedModules,
+                examTaken: existing.examTaken || normalized.examTaken || false,
+                score: existing.score || normalized.score,
+                certificate: existing.certificate || normalized.certificate,
+                examStartDate: existing.examStartDate || normalized.examStartDate,
+              };
+              
+              console.log('🔄 [AuthContext] Données fusionnées:', merged);
+              setUser(merged);
+              localStorage.setItem('user', JSON.stringify(merged));
+            } catch {
+              setUser(normalized);
+              localStorage.setItem('user', JSON.stringify(normalized));
+            }
+          } else {
+            setUser(normalized);
+            localStorage.setItem('user', JSON.stringify(normalized));
+          }
         } })
         .catch(err => {
           console.error('[Auth] Error fetching /auth/me', err);
         });
     }
   }, []);
+
+  const updateUser = (updates: Partial<User>) => {
+    console.log('🔄 [AuthContext] Mise à jour utilisateur:', updates);
+    setUser(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...updates } as User;
+      console.log('💾 [AuthContext] Sauvegarde utilisateur:', next);
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const value: AuthContextType = {
     user,
@@ -186,6 +241,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout,
     isLoading,
     getToken: (): string => getToken() || '',
+    updateUser,
   };
 
   return (

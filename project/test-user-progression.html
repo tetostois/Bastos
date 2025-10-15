@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Progression Utilisateur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        .user-data {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test de Progression Utilisateur</h1>
+    
+    <div class="container">
+        <h2>📊 État Actuel de l'Utilisateur</h2>
+        <div id="userStatus"></div>
+        <div id="userData" class="user-data"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 Actions de Test</h2>
+        <button onclick="setNewUser()">Nouvel Utilisateur</button>
+        <button onclick="setUserWithCertification()">Utilisateur avec Certification</button>
+        <button onclick="setUserWithPayment()">Utilisateur avec Paiement</button>
+        <button onclick="setUserWithProgress()">Utilisateur avec Progression</button>
+        <button onclick="clearUser()">Effacer Utilisateur</button>
+        <button onclick="refreshStatus()">Actualiser</button>
+    </div>
+
+    <div class="container">
+        <h2>📋 Logique de Progression</h2>
+        <div id="progressionLogic"></div>
+    </div>
+
+    <script>
+        // Fonction pour afficher le statut de l'utilisateur
+        function displayUserStatus() {
+            const userData = localStorage.getItem('user');
+            const userStatusDiv = document.getElementById('userStatus');
+            const userDataDiv = document.getElementById('userData');
+            const progressionDiv = document.getElementById('progressionLogic');
+
+            if (!userData) {
+                userStatusDiv.innerHTML = '<div class="status error">❌ Aucun utilisateur trouvé dans localStorage</div>';
+                userDataDiv.textContent = 'Aucune donnée utilisateur';
+                progressionDiv.innerHTML = '<div class="status info">ℹ️ L\'utilisateur doit choisir une certification</div>';
+                return;
+            }
+
+            try {
+                const user = JSON.parse(userData);
+                userDataDiv.textContent = JSON.stringify(user, null, 2);
+
+                // Analyser la progression
+                const hasCertification = !!user.selectedCertification;
+                const hasPaid = !!user.hasPaid;
+                const hasProgress = !!(user.completedModules && user.completedModules.length > 0);
+                const currentModule = user.currentModule;
+
+                let statusHTML = '';
+                let progressionHTML = '';
+
+                // Statut de certification
+                if (hasCertification) {
+                    statusHTML += '<div class="status success">✅ Certification sélectionnée: ' + user.selectedCertification + '</div>';
+                } else {
+                    statusHTML += '<div class="status warning">⚠️ Aucune certification sélectionnée</div>';
+                    progressionHTML += '<div class="status info">1️⃣ L\'utilisateur doit choisir une certification</div>';
+                }
+
+                // Statut de paiement
+                if (hasPaid) {
+                    statusHTML += '<div class="status success">✅ Paiement effectué</div>';
+                } else if (hasCertification) {
+                    statusHTML += '<div class="status warning">⚠️ Paiement en attente</div>';
+                    progressionHTML += '<div class="status info">2️⃣ L\'utilisateur doit effectuer le paiement</div>';
+                }
+
+                // Statut de progression
+                if (hasProgress) {
+                    statusHTML += '<div class="status success">✅ Progression en cours</div>';
+                    if (currentModule) {
+                        statusHTML += '<div class="status info">📍 Module actuel: ' + currentModule + '</div>';
+                    }
+                } else if (hasPaid) {
+                    statusHTML += '<div class="status info">ℹ️ Prêt à commencer les modules</div>';
+                    progressionHTML += '<div class="status info">3️⃣ L\'utilisateur peut commencer les modules</div>';
+                }
+
+                // Logique d'affichage
+                if (hasCertification && hasPaid) {
+                    progressionHTML += '<div class="status success">🎯 L\'utilisateur devrait voir les modules, pas le sélecteur de certification</div>';
+                } else if (hasCertification && !hasPaid) {
+                    progressionHTML += '<div class="status warning">💳 L\'utilisateur devrait voir le formulaire de paiement</div>';
+                } else {
+                    progressionHTML += '<div class="status warning">📋 L\'utilisateur devrait voir le sélecteur de certification</div>';
+                }
+
+                userStatusDiv.innerHTML = statusHTML;
+                progressionDiv.innerHTML = progressionHTML;
+
+            } catch (error) {
+                userStatusDiv.innerHTML = '<div class="status error">❌ Erreur lors du parsing des données utilisateur: ' + error.message + '</div>';
+                userDataDiv.textContent = userData;
+            }
+        }
+
+        // Fonctions de test
+        function setNewUser() {
+            const newUser = {
+                id: '1',
+                firstName: 'Jean',
+                lastName: 'Dupont',
+                email: 'jean.dupont@example.com',
+                role: 'candidate',
+                hasPaid: false,
+                selectedCertification: null,
+                currentModule: null,
+                completedModules: [],
+                unlockedModules: [],
+                examTaken: false
+            };
+            localStorage.setItem('user', JSON.stringify(newUser));
+            displayUserStatus();
+        }
+
+        function setUserWithCertification() {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            user.selectedCertification = 'certification_initiation_pratique_generale';
+            localStorage.setItem('user', JSON.stringify(user));
+            displayUserStatus();
+        }
+
+        function setUserWithPayment() {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            user.hasPaid = true;
+            user.examStartDate = new Date().toISOString();
+            localStorage.setItem('user', JSON.stringify(user));
+            displayUserStatus();
+        }
+
+        function setUserWithProgress() {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            user.completedModules = ['module_1'];
+            user.currentModule = 'module_2';
+            user.unlockedModules = ['module_1', 'module_2'];
+            localStorage.setItem('user', JSON.stringify(user));
+            displayUserStatus();
+        }
+
+        function clearUser() {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            displayUserStatus();
+        }
+
+        function refreshStatus() {
+            displayUserStatus();
+        }
+
+        // Initialiser l'affichage
+        displayUserStatus();
+
+        // Actualiser toutes les 2 secondes
+        setInterval(displayUserStatus, 2000);
+    </script>
+</body>
+</html>

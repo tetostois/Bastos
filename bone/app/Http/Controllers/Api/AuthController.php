@@ -131,7 +131,40 @@ class AuthController extends Controller
     public function me()
     {
         try {
-            return response()->json(auth('api')->user());
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json(['message' => 'Utilisateur non trouvé'], 404);
+            }
+
+            // Retourner l'utilisateur avec tous les champs de progression
+            return response()->json([
+                'id' => $user->id,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'role' => $user->role,
+                'is_active' => $user->is_active,
+                'address' => $user->address,
+                'date_of_birth' => $user->date_of_birth,
+                'place_of_birth' => $user->place_of_birth,
+                'city' => $user->city,
+                'country' => $user->country,
+                'profession' => $user->profession,
+                'created_at' => $user->created_at,
+                'specialization' => $user->specialization,
+                'experience' => $user->experience,
+                // Champs de progression
+                'has_paid' => $user->has_paid ?? false,
+                'exam_taken' => $user->exam_taken ?? false,
+                'score' => $user->score,
+                'certificate' => $user->certificate,
+                'selected_certification' => $user->selected_certification,
+                'completed_modules' => $user->completed_modules,
+                'unlocked_modules' => $user->unlocked_modules,
+                'current_module' => $user->current_module,
+                'exam_start_date' => $user->exam_start_date,
+            ]);
         } catch (Throwable $e) {
             return response()->json(['message' => 'Token invalide ou expiré'], 401);
         }

@@ -16,6 +16,7 @@ import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { AdminService } from '../services/adminService';
+import Pagination from '../components/Pagination';
 
 interface User {
   id: string;
@@ -230,11 +231,33 @@ export const AdminDashboard: React.FC = () => {
 
   // Data from API
   const [users, setUsers] = useState<User[]>([]);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersPerPage, setUsersPerPage] = useState(20);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
   const [examiners, setExaminers] = useState<Examiner[]>([]);
+  const [examinersPage, setExaminersPage] = useState(1);
+  const [examinersPerPage, setExaminersPerPage] = useState(20);
+  const [examinersTotal, setExaminersTotal] = useState(0);
+  const [examinersTotalPages, setExaminersTotalPages] = useState(1);
+
+  // Exam submissions state (déclaré avant tout usage)
+  const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>([]);
+  const [submissionsPage, setSubmissionsPage] = useState(1);
+  const [submissionsPerPage, setSubmissionsPerPage] = useState(20);
+  const [submissionsTotal, setSubmissionsTotal] = useState(0);
+  const [submissionsTotalPages, setSubmissionsTotalPages] = useState(1);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
 
   const loadUsers = async () => {
     try {
-      const res = await fetch(`${API_BASE}/admin/users`, {
+      const params = new URLSearchParams();
+      params.append('page', String(usersPage));
+      params.append('per_page', String(usersPerPage));
+      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter);
+      if (searchTerm) params.append('search', searchTerm);
+      const res = await fetch(`${API_BASE}/admin/users?${params.toString()}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       if (!res.ok) return;
@@ -243,10 +266,40 @@ export const AdminDashboard: React.FC = () => {
       const mapped: User[] = list.map((raw: any) => normalizeUserFromBackend(raw));
       setUsers(mapped);
       setExaminers(mapped.filter((u: User) => u.role === 'examiner').map(toExaminer));
+      if (data?.pagination) {
+        setUsersTotal(Number(data.pagination.total || 0));
+        setUsersTotalPages(Number(data.pagination.last_page || 1));
+      }
     } catch {}
   };
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { if (activeSection === 'users') loadUsers(); }, [activeSection, usersPage, usersPerPage, searchTerm, statusFilter]);
+
+  // Charger les examinateurs paginés
+  const loadExaminers = async () => {
+    try {
+      const params = new URLSearchParams();
+      params.append('role', 'examiner');
+      params.append('page', String(examinersPage));
+      params.append('per_page', String(examinersPerPage));
+      const res = await fetch(`${API_BASE}/admin/users?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: any[] = Array.isArray(data?.data) ? data.data : [];
+      const mapped: User[] = list.map((raw: any) => normalizeUserFromBackend(raw));
+      setExaminers(mapped.filter((u: User) => u.role === 'examiner').map(toExaminer));
+      if (data?.pagination) {
+        setExaminersTotal(Number(data.pagination.total || 0));
+        setExaminersTotalPages(Number(data.pagination.last_page || 1));
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (activeSection === 'examiners') loadExaminers();
+  }, [activeSection, examinersPage, examinersPerPage]);
 
   // Charger les soumissions d'examens au montage
   useEffect(() => { loadExamSubmissions(); }, []);
@@ -256,10 +309,10 @@ export const AdminDashboard: React.FC = () => {
     try {
       setLoadingSubmissions(true);
       setSubmissionsError(null);
-      
-        const response = await AdminService.getExamSubmissions({
-          status: statusFilter === 'all' ? undefined : statusFilter
-        });
+      const response = await AdminService.getExamSubmissions(
+        { status: statusFilter === 'all' ? undefined : statusFilter },
+        { page: submissionsPage, per_page: submissionsPerPage }
+      );
       
       if (response.success) {
         // Transformer les données de l'API vers le format attendu par l'interface
@@ -284,6 +337,10 @@ export const AdminDashboard: React.FC = () => {
         }));
         
         setExamSubmissionsState(transformedSubmissions);
+        if (response.pagination) {
+          setSubmissionsTotal(Number(response.pagination.total || 0));
+          setSubmissionsTotalPages(Number(response.pagination.last_page || 1));
+        }
       } else {
         setSubmissionsError('Erreur lors du chargement des soumissions');
       }
@@ -300,12 +357,9 @@ export const AdminDashboard: React.FC = () => {
     if (activeSection === 'exams') {
       loadExamSubmissions();
     }
-  }, [activeSection, statusFilter]);
+  }, [activeSection, statusFilter, submissionsPage, submissionsPerPage]);
 
-  // Exam submissions state
-  const [examSubmissionsState, setExamSubmissionsState] = useState<ExamSubmissionData[]>([]);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
-  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
+  // (états déplacés plus haut pour éviter la TDZ)
 
   // Exam assignments state - tracks examiner assignments to submissions
   const [examAssignmentsState, setExamAssignmentsState] = useState<ExamAssignment[]>([
@@ -376,9 +430,19 @@ export const AdminDashboard: React.FC = () => {
   const [grades, setGrades] = useState<Record<string, { score: number; feedback: string }>>({});
 
   // Chargement des questions depuis l'API
+  const [questionsPage, setQuestionsPage] = useState(1);
+  const [questionsPerPage, setQuestionsPerPage] = useState(20);
+  const [questionsTotal, setQuestionsTotal] = useState(0);
+  const [questionsTotalPages, setQuestionsTotalPages] = useState(1);
+
   const loadQuestions = async (cert: CertificationType, mod: ModuleType) => {
     try {
-      const url = `${API_BASE}/admin/questions?certification_type=${encodeURIComponent(cert)}&module=${encodeURIComponent(mod)}`;
+      const params = new URLSearchParams();
+      params.append('certification_type', cert);
+      params.append('module', mod);
+      params.append('page', String(questionsPage));
+      params.append('per_page', String(questionsPerPage));
+      const url = `${API_BASE}/admin/questions?${params.toString()}`;
       const res = await fetch(url, { 
         headers: { 
           'Authorization': `Bearer ${getToken()}`,
@@ -403,6 +467,10 @@ export const AdminDashboard: React.FC = () => {
       });
       
       setQuestions(sortedList.map(normalizeQuestionFromBackend));
+      if (data?.pagination) {
+        setQuestionsTotal(Number(data.pagination.total || 0));
+        setQuestionsTotalPages(Number(data.pagination.last_page || 1));
+      }
     } catch (error: unknown) {
       console.error('Erreur lors du chargement des questions:', error);
       const errorMessage = error instanceof Error ? error.message : 'Une erreur inconnue est survenue';
@@ -415,7 +483,7 @@ export const AdminDashboard: React.FC = () => {
     if (activeSection === 'exam-questions') {
       loadQuestions(selectedCertification, selectedModule);
     }
-  }, [activeSection, selectedCertification, selectedModule]);
+  }, [activeSection, selectedCertification, selectedModule, questionsPage, questionsPerPage]);
 
   // Fonction pour publier un examen (API)
   const publishExam = async (certificationType: CertificationType, module: ModuleType) => {
@@ -1754,6 +1822,14 @@ export const AdminDashboard: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+                <Pagination
+                  currentPage={usersPage}
+                  totalPages={usersTotalPages}
+                  perPage={usersPerPage}
+                  totalItems={usersTotal}
+                  onPageChange={(p) => setUsersPage(p)}
+                  onPerPageChange={(pp) => { setUsersPerPage(pp); setUsersPage(1); }}
+                />
               </Card>
             </div>
           )}
@@ -1819,6 +1895,14 @@ export const AdminDashboard: React.FC = () => {
                   </Card>
                 ))}
               </div>
+              <Pagination
+                currentPage={examinersPage}
+                totalPages={examinersTotalPages}
+                perPage={examinersPerPage}
+                totalItems={examinersTotal}
+                onPageChange={(p) => setExaminersPage(p)}
+                onPerPageChange={(pp) => { setExaminersPerPage(pp); setExaminersPage(1); }}
+              />
             </div>
           )}
 
@@ -2151,6 +2235,14 @@ export const AdminDashboard: React.FC = () => {
                     ))}
                   </div>
                 )}
+                <Pagination
+                  currentPage={questionsPage}
+                  totalPages={questionsTotalPages}
+                  perPage={questionsPerPage}
+                  totalItems={questionsTotal}
+                  onPageChange={(p) => setQuestionsPage(p)}
+                  onPerPageChange={(pp) => { setQuestionsPerPage(pp); setQuestionsPage(1); }}
+                />
               </Card>
             </div>
           )}
@@ -2328,6 +2420,14 @@ export const AdminDashboard: React.FC = () => {
                       Aucune soumission d'examen trouvée
                     </div>
                   )}
+                <Pagination
+                  currentPage={submissionsPage}
+                  totalPages={submissionsTotalPages}
+                  perPage={submissionsPerPage}
+                  totalItems={submissionsTotal}
+                  onPageChange={(p) => setSubmissionsPage(p)}
+                  onPerPageChange={(pp) => { setSubmissionsPerPage(pp); setSubmissionsPage(1); }}
+                />
                 </div>
               </Card>
             </div>

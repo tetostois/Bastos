@@ -156,7 +156,21 @@ class UserController extends Controller
                    ->orWhere('email', 'like', "%$search%");
             });
         }
-        return response()->json($q->latest()->paginate(20));
+        $perPage = (int) $request->query('per_page', 20);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 20;
+        $users = $q->latest()->paginate($perPage);
+        return response()->json([
+            'success' => true,
+            'data' => $users->items(),
+            'pagination' => [
+                'current_page' => $users->currentPage(),
+                'per_page' => $users->perPage(),
+                'total' => $users->total(),
+                'last_page' => $users->lastPage(),
+                'from' => $users->firstItem(),
+                'to' => $users->lastItem(),
+            ],
+        ]);
     }
 
     /**

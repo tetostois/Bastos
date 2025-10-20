@@ -21,8 +21,21 @@ class QuestionController extends Controller
         if ($request->filled('is_published')) {
             $query->where('is_published', filter_var($request->is_published, FILTER_VALIDATE_BOOLEAN));
         }
-        $questions = $query->orderByDesc('id')->paginate(20);
-        return response()->json($questions);
+        $perPage = (int) $request->query('per_page', 20);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 20;
+        $questions = $query->orderByDesc('id')->paginate($perPage);
+        return response()->json([
+            'success' => true,
+            'data' => $questions->items(),
+            'pagination' => [
+                'current_page' => $questions->currentPage(),
+                'per_page' => $questions->perPage(),
+                'total' => $questions->total(),
+                'last_page' => $questions->lastPage(),
+                'from' => $questions->firstItem(),
+                'to' => $questions->lastItem(),
+            ],
+        ]);
     }
 
     public function store(Request $request)

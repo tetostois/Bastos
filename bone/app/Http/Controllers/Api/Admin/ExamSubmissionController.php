@@ -31,11 +31,21 @@ class ExamSubmissionController extends Controller
             $query->where('examiner_id', $request->input('examiner_id'));
         }
 
-        $submissions = $query->orderBy('submitted_at', 'desc')->get();
+        $perPage = (int) $request->query('per_page', 20);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 20;
+        $submissions = $query->orderBy('submitted_at', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'submissions' => $submissions,
+            'data' => $submissions->items(),
+            'pagination' => [
+                'current_page' => $submissions->currentPage(),
+                'per_page' => $submissions->perPage(),
+                'total' => $submissions->total(),
+                'last_page' => $submissions->lastPage(),
+                'from' => $submissions->firstItem(),
+                'to' => $submissions->lastItem(),
+            ],
         ]);
     }
 
